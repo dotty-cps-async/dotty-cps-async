@@ -135,7 +135,7 @@ lazy val compilerPlugin = project.in(file("compiler-plugin"))
                               libraryDependencies ++= Seq(
                                   "org.scala-lang" %% "scala3-compiler" % scalaVersion.value % "provided",
                                   "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
-                                  ("org.scala-js" %% "scalajs-linker" % "1.18.1").cross(CrossVersion.for3Use2_13) % "test",
+                                  ("org.scala-js" %% "scalajs-linker" % "1.19.0").cross(CrossVersion.for3Use2_13) % "test",
                                   ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test",
                               ),
                               // TODO: split test into subdirectories.
@@ -182,7 +182,7 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
                               Test / unmanagedSources / excludeFilter := "TestSF1W1.scala" || "TestSL3.scala" || "TestSF4.scala"
                            ).jsSettings(
                               scalaJSUseMainModuleInitializer := true,
-                              libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+                              libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.19.0" % Test).cross(CrossVersion.for3Use2_13),
                               mimaFailOnNoPrevious := false,
                               Test / unmanagedSourceDirectories ++= Seq(
                                   baseDirectory.value / ".." / ".." / "js" / "src" / "test" / "scala",
