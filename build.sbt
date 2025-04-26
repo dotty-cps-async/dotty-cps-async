@@ -204,13 +204,14 @@ lazy val logic = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   .disablePlugins(SitePreviewPlugin)
   .settings(
     name := "dotty-cps-async-logic",
-    libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.0.4" % Test,
   ).jsSettings(
     scalaJSUseMainModuleInitializer := true,
     libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
   ).nativeSettings(
     libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
     addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full)
+
   )
 
 
