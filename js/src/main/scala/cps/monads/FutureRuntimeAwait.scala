@@ -1,15 +1,17 @@
 package cps.monads
 
+/*
+TODO:  enable when js.await will be available on scala-3
 import cps.*
 
 import scalajs.*
 import scala.concurrent.Future
 import scala.util.*
 
-object FutureRuntimeAwait extends CpsRuntimeAwait[Future] {
+given FutureRuntimeAwait: CpsRuntimeAwait[Future] with {
 
   def await[A](fa: Future[A])(ctx: CpsTryMonadContext[Future]): A = {
-    import scala.concurrent.ExecutionContext.Implicits.global
+    import scalajs.concurrent.JSExecutionContext.Implicits.given
     val jsPromise = new js.Promise[A]((resolve, reject) => {
       fa.onComplete {
         case Success(r)  => resolve(r)
@@ -20,3 +22,4 @@ object FutureRuntimeAwait extends CpsRuntimeAwait[Future] {
   }
 
 }
+*/

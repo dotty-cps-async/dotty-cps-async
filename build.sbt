@@ -62,7 +62,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
         Compile / doc / scalacOptions := Seq("-groups",  
                 "-source-links:shared=github://rssh/dotty-cps-async/master#shared",
                 "-source-links:js=github://rssh/dotty-cps-async/master#js"),
-        libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+        libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.9.0" % Test).cross(CrossVersion.for3Use2_13),
         mimaFailOnNoPrevious := false
     ).nativeSettings(
         libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
@@ -207,7 +207,7 @@ lazy val logic = crossProject(JSPlatform, JVMPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.0.4" % Test,
   ).jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.9.0" % Test).cross(CrossVersion.for3Use2_13),
   ).nativeSettings(
     libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
     addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full)
