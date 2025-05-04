@@ -35,7 +35,7 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
   override val runsAfter = Set(PhaseSelectAndGenerateShiftedMethods.phaseName, Inlining.name, Pickler.name)
   override val runsBefore = Set(PhaseChangeSymbolsAndRemoveScaffolding.name, ElimPackagePrefixes.name, Erasure.name)
 
-  val debug = true
+  val debug = false
 
   override def prepareForDefDef(tree: tpd.DefDef)(using Context): Context = {
     super.prepareForDefDef(tree).withPhase(this)
