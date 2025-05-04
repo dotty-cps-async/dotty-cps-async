@@ -1,4 +1,4 @@
-package cps.logic
+package cps.monads.logic
 
 import scala.concurrent.*
 import scala.concurrent.duration.*
@@ -10,8 +10,21 @@ import org.junit.Test
 
 
 
-
 class AsyncLogicTTest {
+
+  import AsyncLogicTTest.*
+
+  @Test
+  def testAsyncAwaitInLogicT(): Unit = {
+    val urls = List("http://example.com", "http://example.org")
+    val logicStream = asyncAwaitInLogicT(urls)
+    val firstResult = logicStream.observeN(2)
+    val r = Await.result(firstResult, 1.second)
+    assert(r.size == 2)
+    assert(r.contains("success: http://example.com"))
+    assert(r.contains("success: http://example.org"))
+  }
+
 
 }
 
@@ -42,14 +55,6 @@ object AsyncLogicTTest {
     result
   }
 
-  @Test def testAsyncAwaitInLogicT(): Unit = {
-    val urls = List("http://example.com", "http://example.org")
-    val logicStream = asyncAwaitInLogicT(urls)
-    val firstResult = logicStream.observeOne
-    val r = Await.result(firstResult, 1.second)
-    assert(r.size == 2)
-    assert(r.contains("success: http://example.com"))
-    assert(r.contains("success: http://example.org"))
-  }
+
 
 }
