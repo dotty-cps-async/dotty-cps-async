@@ -4,19 +4,19 @@ Dependency
 Sbt Example
 -----------
 
-The current prerelease is |0.9.23|.
+The current release is |1.0.2|.
 
 Sbt dependency:
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.0.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.0.2"
 
 JavaScript and Native targets are also supported.
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async" % "1.0.0"
+   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async" % "1.0.2"
 
 
 **Note**: :red:`%%%` automatically determines whether we are in a Scala/JVM or a Scala.js or a Scala.Native project (see |Scala.js Cross-Building|_).
@@ -28,7 +28,7 @@ A version of dotty-cps-async with extended capacities also exists, which relies 
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async-next" % "1.0.0"
+   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async-next" % "1.0.2"
 
 
 
@@ -42,13 +42,13 @@ for sbt:
  .. code-block:: scala
 
   autoCompilerPlugins := true
-  addCompilerPlugin("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.0.0")
+  addCompilerPlugin("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.0.2")
 
 for mill:
 
  .. code-block:: scala
 
-  def scalacPluginIvyDeps = Agg(ivy"io.github.dotty-cps-async::dotty-cps-async-compiler-plugin:1.0.0")
+  def scalacPluginIvyDeps = Agg(ivy"io.github.dotty-cps-async::dotty-cps-async-compiler-plugin:1.0.2")
 
 Loom support on JVM
 -------------------
@@ -58,14 +58,14 @@ To enable one, add `dotty-cps-async-loom` module to the dependencies:
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom" % "1.0.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom" % "1.0.2"
 
  or
 
  .. code-block:: scala
 
    // for next line
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom-next" % "1.0.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom-next" % "1.0.2"
 
 
 Licensing and commercial support
