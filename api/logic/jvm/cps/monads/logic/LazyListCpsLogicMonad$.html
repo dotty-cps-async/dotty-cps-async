@@ -202,12 +202,20 @@ node11 -> node5;
           </div>
          </div>
         </div>
+       </div>
+      </section>
+      <section id="Inherited-and-Abstract-types">
+       <div class="documentableList expand">
+        <div class="documentableList-expander">
+         <button class="icon-button show-content expand"></button>
+         <h4 class="groupHeader h200">Inherited and Abstract types</h4>
+        </div>
         <div class="documentableElement" id="WF-0" data-f-inherited="CpsMonad">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">type </span></span><a href="LazyListCpsLogicMonad$.html#WF-0" t="n" class="documentableName ">WF</a>[<span t="k"></span><span data-unresolved-link="" t="t">X</span>] = <span data-unresolved-link="" t="t">LazyList</span>[<span data-unresolved-link="" t="t">X</span>]
+            <span class="modifiers"></span><span class="kind"><span t="k">type </span></span><a href="LazyListCpsLogicMonad$.html#WF-0" t="n" class="documentableName ">WF</a>[<span t="k"></span><span data-unresolved-link="" t="t">X</span>]<span t="k"> &lt;: </span><span data-unresolved-link="" t="t">LazyList</span>[<span data-unresolved-link="" t="t">X</span>]
            </div>
           </div>
          </div>
@@ -386,12 +394,12 @@ node11 -> node5;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="mFoldLeftWhileM-33b" data-f-keywords="override">
+        <div class="documentableElement" id="mFoldLeftWhileObserveM-33b" data-f-keywords="override">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"><span t="k">override </span></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldLeftWhileM-33b" t="n" class="documentableName ">mFoldLeftWhileM</a>[<span t="k"></span><span data-unresolved-link="" t="t">A</span>, <span t="k"></span><span data-unresolved-link="" t="t">B</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">zero</span>: <span t="t">B</span>, <span t="k"></span><span data-unresolved-link="" t="n">p</span>: <span t="t">B</span><span t="k"> =&gt; </span><span data-unresolved-link="" t="t">Boolean</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<span t="t">B</span>, <span t="t">A</span>)<span t="k"> =&gt; </span><span t="t">B</span>): <span data-unresolved-link="" t="t">B</span>
+            <span class="modifiers"><span t="k">override </span></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldLeftWhileObserveM-33b" t="n" class="documentableName ">mFoldLeftWhileObserveM</a>[<span t="k"></span><span data-unresolved-link="" t="t">A</span>, <span t="k"></span><span data-unresolved-link="" t="t">B</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">zero</span>: <span t="t">B</span>, <span t="k"></span><span data-unresolved-link="" t="n">p</span>: <span t="t">B</span><span t="k"> =&gt; </span><span data-unresolved-link="" t="t">Boolean</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<span t="t">B</span>, <span t="t">A</span>)<span t="k"> =&gt; </span><span t="t">B</span>): <span data-unresolved-link="" t="t">B</span>
            </div>
           </div>
          </div>
@@ -411,6 +419,36 @@ node11 -> node5;
                <div>
                 <a href="CpsLogicMonad.html">CpsLogicMonad</a>
                </div>
+              </dd>
+             </dl>
+            </div>
+           </div>
+          </div>
+         </div>
+        </div>
+        <div class="documentableElement" id="mFoldM-fffff65b" data-f-keywords="override">
+         <div class="documentableElement-expander">
+          <button class="icon-button ar show-content"></button>
+          <div class="header monospace mono-medium">
+           <div class="signature">
+            <span class="modifiers"><span t="k">override </span></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldM-fffff65b" t="n" class="documentableName ">mFoldM</a>[<span t="k"></span><span data-unresolved-link="" t="t">S</span>, <span t="k"></span><span data-unresolved-link="" t="t">A</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">s0</span>: <span t="t">S</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<span t="t">S</span>, <span t="t">A</span>)<span t="k"> =&gt; </span><span data-unresolved-link="" t="t">LazyList</span>[<span t="t">S</span>]): <span data-unresolved-link="" t="t">LazyList</span>[<span data-unresolved-link="" t="t">S</span>]
+           </div>
+          </div>
+         </div>
+         <div class="docs">
+          <span class="modifiers"></span>
+          <div>
+           <div class="originInfo"></div>
+           <div class="memberDocumentation">
+            <div class="cover">
+             <div class="doc"></div>
+             <h2 class="h200">Attributes</h2>
+             <dl class="attributes attributes-small">
+              <dt class="body-small">
+               Definition Classes
+              </dt>
+              <dd class="body-medium">
+               <div></div>
               </dd>
              </dl>
             </div>
@@ -1104,12 +1142,12 @@ node11 -> node5;
           </div>
          </div>
         </div>
-        <div class="documentableElement" id="mFoldLeftWhile-ecc" data-f-inherited="CpsLogicMonad">
+        <div class="documentableElement" id="mFoldLeftWhileObserve-ecc" data-f-inherited="CpsLogicMonad">
          <div class="documentableElement-expander">
           <button class="icon-button ar show-content"></button>
           <div class="header monospace mono-medium">
            <div class="signature">
-            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldLeftWhile-ecc" t="n" class="documentableName ">mFoldLeftWhile</a>[<span t="k"></span><span data-unresolved-link="" t="t">A</span>, <span t="k"></span><span data-unresolved-link="" t="t">B</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">zero</span>: <span t="t">B</span>, <span t="k"></span><span data-unresolved-link="" t="n">p</span>: <span t="t">B</span><span t="k"> =&gt; </span><span data-unresolved-link="" t="t">Boolean</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<span t="t">B</span>, <span t="t">A</span>)<span t="k"> =&gt; </span><span t="t">B</span>): <a href="CpsLogicMonad.html#Observer-0" t="t">Observer</a>[<span data-unresolved-link="" t="t">B</span>]
+            <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldLeftWhileObserve-ecc" t="n" class="documentableName ">mFoldLeftWhileObserve</a>[<span t="k"></span><span data-unresolved-link="" t="t">A</span>, <span t="k"></span><span data-unresolved-link="" t="t">B</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">zero</span>: <span t="t">B</span>, <span t="k"></span><span data-unresolved-link="" t="n">p</span>: <span t="t">B</span><span t="k"> =&gt; </span><span data-unresolved-link="" t="t">Boolean</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<span t="t">B</span>, <span t="t">A</span>)<span t="k"> =&gt; </span><span t="t">B</span>): <a href="CpsLogicMonad.html#Observer-0" t="t">Observer</a>[<span data-unresolved-link="" t="t">B</span>]
            </div>
           </div>
          </div>
@@ -1126,7 +1164,7 @@ node11 -> node5;
                Inherited from:
               </dt>
               <dd class="body-medium">
-               <a href="CpsLogicMonad.html#mFoldLeftWhile-ecc">CpsLogicMonad</a>
+               <a href="CpsLogicMonad.html#mFoldLeftWhileObserve-ecc">CpsLogicMonad</a>
               </dd>
              </dl>
             </div>
@@ -1643,6 +1681,50 @@ node11 -> node5;
         </div>
        </div>
       </section>
+      <section id="Deprecated-and-Inherited-methods">
+       <div class="documentableList expand">
+        <div class="documentableList-expander">
+         <code><code><button class="icon-button show-content expand"></button>
+           <h4 class="groupHeader h200">Deprecated and Inherited methods</h4></code></code>
+        </div>
+        <div class="documentableElement" id="mFoldLeftWhileM-ecc" data-f-inherited="CpsLogicMonad">
+         <div class="documentableElement-expander">
+          <code><code><button class="icon-button ar show-content"></button>
+            <div class="header monospace mono-medium">
+             <div class="signature">
+              <span class="modifiers"></span><span class="kind"><span t="k">def </span></span><a href="LazyListCpsLogicMonad$.html#mFoldLeftWhileM-ecc" t="n" class="documentableName deprecated">mFoldLeftWhileM</a>[<span t="k"></span><span data-unresolved-link="" t="t">A</span>, <span t="k"></span><span data-unresolved-link="" t="t">B</span>](<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">ma</span>: <span data-unresolved-link="" t="t">LazyList</span>[<span t="t">A</span>], <span t="k"></span><span data-unresolved-link="" t="n">zero</span>: <a href="CpsSyncLogicMonad.html#Observer-0" t="t">Observer</a>[<span t="t">B</span>], <span t="k"></span><span data-unresolved-link="" t="n">p</span>: <span t="t">B</span><span t="k"> =&gt; </span><span data-unresolved-link="" t="t">Boolean</span>)(<span t="k"></span><span t="k"></span><span data-unresolved-link="" t="n">op</span>: (<a href="CpsSyncLogicMonad.html#Observer-0" t="t">Observer</a>[<span t="t">B</span>], <a href="CpsSyncLogicMonad.html#Observer-0" t="t">Observer</a>[<span t="t">A</span>])<span t="k"> =&gt; </span><a href="CpsSyncLogicMonad.html#Observer-0" t="t">Observer</a>[<span t="t">B</span>]): <a href="CpsLogicMonad.html#Observer-0" t="t">Observer</a>[<span data-unresolved-link="" t="t">B</span>]
+             </div>
+            </div></code></code>
+         </div>
+         <div class="docs">
+          <code><code><span class="modifiers"></span>
+            <div>
+             <div class="originInfo"></div>
+             <div class="memberDocumentation">
+              <div class="cover">
+               <div class="doc"></div>
+               <h2 class="h200">Attributes</h2>
+               <dl class="attributes attributes-small">
+                <dt class="body-small">
+                 Deprecated
+                </dt>
+                <dd class="body-medium">
+                 true
+                </dd>
+                <dt class="body-small">
+                 Inherited from:
+                </dt>
+                <dd class="body-medium">
+                 <a href="CpsLogicMonad.html#mFoldLeftWhileM-ecc">CpsLogicMonad</a>
+                </dd>
+               </dl>
+              </div>
+             </div>
+            </div></code></code>
+         </div>
+        </div>
+       </div>
+      </section>
       <section id="Inherited-fields">
        <div class="documentableList expand">
         <div class="documentableList-expander">
@@ -1691,4 +1773,4 @@ node11 -> node5;
    </div>
   </div>
  </div>
-</section></div><div id="toc" class="body-small"><div id="toc-container"><span class="toc-title h200">In this article</span><nav class="toc-nav"><ul class="toc-list"><li><a href="#attributes">Attributes</a></li><li><a href="#members-list">Members list</a><ul><li><a href="#Type-members">Type members</a><ul><li><a href="#Inherited-types">Inherited types</a></li></ul></li><li><a href="#Value-members">Value members</a><ul><li><a href="#Concrete-methods">Concrete methods</a></li><li><a href="#Inherited-methods">Inherited methods</a></li><li><a href="#Inherited-fields">Inherited fields</a></li></ul></li></ul></li></ul></nav></div></div></div><div id="footer" class="body-small mobile-footer"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div></div></div></body></html>
+</section></div><div id="toc" class="body-small"><div id="toc-container"><span class="toc-title h200">In this article</span><nav class="toc-nav"><ul class="toc-list"><li><a href="#attributes">Attributes</a></li><li><a href="#members-list">Members list</a><ul><li><a href="#Type-members">Type members</a><ul><li><a href="#Inherited-types">Inherited types</a></li><li><a href="#Inherited-and-Abstract-types">Inherited and Abstract types</a></li></ul></li><li><a href="#Value-members">Value members</a><ul><li><a href="#Concrete-methods">Concrete methods</a></li><li><a href="#Inherited-methods">Inherited methods</a></li><li><a href="#Deprecated-and-Inherited-methods">Deprecated and Inherited methods</a></li><li><a href="#Inherited-fields">Inherited fields</a></li></ul></li></ul></li></ul></nav></div></div></div><div id="footer" class="body-small mobile-footer"><div class="left-container">Generated with</div><div class="right-container"><div class="text"></div></div><div class="text-mobile"></div></div></div></div></body></html>
