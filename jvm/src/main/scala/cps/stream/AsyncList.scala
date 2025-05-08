@@ -13,23 +13,96 @@ import scala.util.*
   */
 sealed trait AsyncList[F[_]: CpsConcurrentMonad, +T]:
 
+  /** Get next element of stream
+    * @return
+    *   Some((T, AsyncList[F,T])) or None if end of stream
+    */
   def next: F[Option[(T, AsyncList[F, T])] @uncheckedVariance]
 
+  /** Map function over stream elements.
+    * @param f
+    *   function to map
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream with mapped elements
+    */
   def map[S](f: T => S): AsyncList[F, S]
 
+  /** Map async function over stream elements. * @param f function to map
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream with mapped elements
+    */
   def mapAsync[S](f: T => F[S]): AsyncList[F, S]
 
+  /** FlatMap function over stream elements.
+    * @param f
+    *   function to flatMap
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream with mapped elements
+    */
   def flatMap[S](f: T => AsyncList[F, S]): AsyncList[F, S]
 
+  /** FlatMap async function over stream elements. This function is automatically substiuted instead of flatMap in async macro, if
+    * <code>f </code> include awaits
+    * @param f
+    *   function to flatMap
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream with mapped elements
+    */
   def flatMapAsync[S](f: T => F[AsyncList[F, S]]): AsyncList[F, S]
 
+  /** Append another stream to this stream.
+    * @param x
+    *   stream to append
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream wich at first have this elements, then appended elements
+    */
   def append[S >: T](x: => AsyncList[F, S]): AsyncList[F, S]
 
+  /** Append async function over stream elements. This function is automatically substiuted instead of append in async macro, if
+    * <code>f </code> include awaits
+    * @param x
+    *   function to append
+    * @tparam S
+    *   type of result
+    * @return
+    *   new stream wich at first have this elements, then appended elements
+    */
   def appendAsync[S >: T](x: () => F[AsyncList[F, S]]): AsyncList[F, S] =
     append(AsyncList.Wait(x()))
 
+  /** Fold function over stream elements.
+    * @param s0
+    *   initial value
+    * @param f
+    *   function to fold
+    * @tparam S
+    *   type of result
+    * @return
+    *   accumulated folded value (i.e. f(f(f(s0, t1), t2), t3) ...) )
+    */
   def fold[S](s0: S)(f: (S, T) => S): F[S]
 
+  /** Fold async function over stream elements. This function is automatically substiuted instead of fold in async macro, if <code>f
+    * </code> include awaits
+    * @param s0
+    *   initial value
+    * @param f
+    *   function to fold
+    * @tparam S
+    *   type of result
+    * @return
+    *   accumulated folded value (i.e. f(f(f(s0, t1), t2), t3) ...) )
+    */
   def foldAsync[S](s0: S)(f: (S, T) => F[S]): F[S]
 
   def scan[S](s0: S)(f: (S, T) => S): AsyncList[F, S] =
@@ -42,14 +115,23 @@ sealed trait AsyncList[F[_]: CpsConcurrentMonad, +T]:
 
   def scanTailAsync[S](s0: S)(f: (S, T) => F[S]): AsyncList[F, S]
 
+  /** Apply f for each element pf the stream
+    */
   def foreach[U](f: T => U): F[Unit] =
     fold(())((s, t) => { f(t); () })
 
   def foreachAsync[U](f: T => F[U]): F[Unit] =
     foldAsync(())((s, t) => summon[CpsMonad[F]].map(f(t))(_ => ()))
 
+  /** filter elements of stream
+    * @param p - predicate to filter
+    * @return - new stream with filtered elements, which contains only elements, for which p is true.
+    */
   def filter(p: T => Boolean): AsyncList[F, T]
 
+  /** filter async function over stream elements. This function is automatically substiuted instead of filter in async macro, if
+    * <code>p </code> include awaits
+    */
   def filterAsync(p: T => F[Boolean]): AsyncList[F, T]
 
   def find(p: T => Boolean): F[Option[T]] @uncheckedVariance

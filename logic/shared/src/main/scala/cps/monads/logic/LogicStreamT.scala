@@ -243,7 +243,7 @@ object LogicStreamT {
 
   /** Empty stream
     */
-  def empty[F[_]: CpsTryMonad, A](): LogicStreamT[F, A] =
+  def empty[F[_]: CpsTryMonad, A]: LogicStreamT[F, A] =
     Empty[F, A]()
 
   def pure[F[_]: CpsTryMonad, A](a: A): LogicStreamT[F, A] =
@@ -270,6 +270,10 @@ object LogicStreamT {
   given observeConversion[F[_]: CpsTryMonad]: CpsMonadConversion[F, [A] =>> LogicStreamT[F, A]] with
     def apply[T](ft: F[T]): LogicStreamT[F, T] =
       LogicStreamT.WaitF(summon[CpsTryMonad[F]].map(ft)(LogicStreamT.mpure(_)))
+
+  def fromCollection[F[_]:CpsTryMonad,A](s: Iterable[A]): LogicStreamT[F,A] =
+    s.foldLeft(empty[F,A])((s, a) => s.mplus(pure(a)))
+
 
 }
 
@@ -326,7 +330,7 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
     }
   }
 
-  override def mFoldLeftWhileM[A, B](ma: LogicStreamT[F, A], zeroM: F[B], p: B => Boolean)(op: (F[B], F[A]) => F[B]): F[B] = {
+  override def mFoldLeftWhileObserveM[A, B](ma: LogicStreamT[F, A], zeroM: F[B], p: B => Boolean)(op: (F[B], F[A]) => F[B]): F[B] = {
     observerCpsMonad.flatMap(zeroM) { zero =>
       if (p(zero)) then
         observerCpsMonad.flatMap(ma.fsplit) {
@@ -336,13 +340,14 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
             head match
               case Success(a) =>
                 val b1 = op(observerCpsMonad.pure(zero), observerCpsMonad.pure(a))
-                mFoldLeftWhileM(tail, b1, p)(op)
+                mFoldLeftWhileObserveM(tail, b1, p)(op)
               case Failure(e) =>
                 observerCpsMonad.error(e)
         }
       else observerCpsMonad.pure(zero)
     }
   }
+
 
 }
 

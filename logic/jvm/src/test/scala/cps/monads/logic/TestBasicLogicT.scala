@@ -59,7 +59,6 @@ class TestBasicLogicT {
         val zList = z.toAsyncList
         val fFirstN = zList.take(N)
         val firstN = Await.result(fFirstN, 1.second)
-        println(s"firstN = ${firstN.toSeq}")
         assert(firstN.size == N)
         //  it shoudl be or prime or fib.  Checking for both (prime and fib) is sporadically failed
         //  on github ci  (maybe due to different hardware, which give different timing for prime and fib and we have 100 fib first)

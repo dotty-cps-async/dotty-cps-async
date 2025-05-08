@@ -1,10 +1,10 @@
-val dottyVersion = "3.6.2"
+val dottyVersion = "3.7.0"
 
 import xerial.sbt.Sonatype.sonatypeCentralHost
 import scala.scalanative.build._
 
 
-ThisBuild/version := "1.0.1-SNAPSHOT"
+ThisBuild/version := "1.0.2"
 ThisBuild/versionScheme := Some("semver-spec")
 //ThisBuild/resolvers ++= Opts.resolver.sonatypeOssSnapshots
 ThisBuild/sonatypeCredentialHost := sonatypeCentralHost
@@ -47,7 +47,6 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
         scalacOptions ++= Seq( //"-Yexplicit-nulls",
                             "-unchecked", "-Ydebug-trace", "-Ydebug-names", "-Xprint-types",
                             "-Ydebug", "-uniqid", "-Xcheck-macros", "-Ycheck:macro", "-Yprint-syms",
-                            "-Wsafe-init",
                              ),
                              // -explain
                              // -Ydebug-error
@@ -62,7 +61,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
         Compile / doc / scalacOptions := Seq("-groups",  
                 "-source-links:shared=github://rssh/dotty-cps-async/master#shared",
                 "-source-links:js=github://rssh/dotty-cps-async/master#js"),
-        libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+        libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.9.0" % Test).cross(CrossVersion.for3Use2_13),
         mimaFailOnNoPrevious := false
     ).nativeSettings(
         libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
@@ -135,7 +134,7 @@ lazy val compilerPlugin = project.in(file("compiler-plugin"))
                               libraryDependencies ++= Seq(
                                   "org.scala-lang" %% "scala3-compiler" % scalaVersion.value % "provided",
                                   "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
-                                  ("org.scala-js" %% "scalajs-linker" % "1.18.1").cross(CrossVersion.for3Use2_13) % "test",
+                                  ("org.scala-js" %% "scalajs-linker" % "1.19.0").cross(CrossVersion.for3Use2_13) % "test",
                                   ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test",
                               ),
                               // TODO: split test into subdirectories.
@@ -182,7 +181,7 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
                               Test / unmanagedSources / excludeFilter := "TestSF1W1.scala" || "TestSL3.scala" || "TestSF4.scala"
                            ).jsSettings(
                               scalaJSUseMainModuleInitializer := true,
-                              libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+                              libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.19.0" % Test).cross(CrossVersion.for3Use2_13),
                               mimaFailOnNoPrevious := false,
                               Test / unmanagedSourceDirectories ++= Seq(
                                   baseDirectory.value / ".." / ".." / "js" / "src" / "test" / "scala",
@@ -207,10 +206,11 @@ lazy val logic = crossProject(JSPlatform, JVMPlatform, NativePlatform)
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
   ).jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.8.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.9.0" % Test).cross(CrossVersion.for3Use2_13),
   ).nativeSettings(
     libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
     addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full)
+
   )
 
 

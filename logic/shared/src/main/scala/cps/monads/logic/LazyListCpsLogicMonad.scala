@@ -71,7 +71,7 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
     ma.headOption
 
   @tailrec
-  override def mFoldLeftWhileM[A, B](ma: LazyList[A], zero: B, p: B => Boolean)(op: (B, A) => B): B = {
+  override def mFoldLeftWhileObserveM[A, B](ma: LazyList[A], zero: B, p: B => Boolean)(op: (B, A) => B): B = {
     if (ma.isEmpty) {
       zero
     } else {
@@ -79,15 +79,28 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
       val tail = ma.tail
       val newZero = op(zero, head)
       if (p(newZero)) {
-        mFoldLeftWhileM(tail, newZero, p)(op)
+        mFoldLeftWhileObserveM(tail, newZero, p)(op)
       } else {
         newZero
       }
     }
   }
 
+  override def mFoldM[S, A](ma: LazyList[A], s0: S)(op: (S, A) => LazyList[S]): LazyList[S] = {
+    if (ma.isEmpty) {
+      LazyList(s0)
+    } else {
+      val head = ma.head
+      val tail = ma.tail
+      val newS = op(s0, head)
+      summon[CpsLogicMonad[LazyList]].flatMap(newS)(s => mFoldM(tail, s)(op))
+    }
+  }
+
+
   override def toLazyList[T](m: LazyList[T]): LazyList[T] = m
+  
 
 }
 
-given CpsSyncLogicMonad[LazyList] = LazyListCpsLogicMonad
+given lazyListLogicMonad: CpsSyncLogicMonad[LazyList] = LazyListCpsLogicMonad

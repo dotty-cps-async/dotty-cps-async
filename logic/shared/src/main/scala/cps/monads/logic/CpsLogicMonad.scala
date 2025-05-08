@@ -132,16 +132,25 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
   def mObserveOne[A](ma: M[A]): Observer[Option[A]]
 
   def mObserveN[A](ma: M[A], n: Int): Observer[IndexedSeq[A]] =
-    mFoldLeftWhile(ma, IndexedSeq.empty[A], (seq: IndexedSeq[A]) => seq.size < n) { (seq, a) =>
+    mFoldLeftWhileObserve(ma, IndexedSeq.empty[A], (seq: IndexedSeq[A]) => seq.size < n) { (seq, a) =>
       seq :+ a
     }
 
-  def mFoldLeftWhileM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
-      op: (Observer[B], Observer[A]) => Observer[B]
+  def mFoldLeftWhileObserveM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
+    op: (Observer[B], Observer[A]) => Observer[B]
   ): Observer[B]
 
-  def mFoldLeftWhile[A, B](ma: M[A], zero: B, p: B => Boolean)(op: (B, A) => B): Observer[B] = {
-    mFoldLeftWhileM(ma, observerCpsMonad.pure(zero), p) { (bObs, aObs) =>
+
+  @deprecated("use mFoldLeftWhileObserve", "1.0.0")
+  def mFoldLeftWhileM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
+      op: (Observer[B], Observer[A]) => Observer[B]
+  ): Observer[B] = {
+    mFoldLeftWhileObserveM(ma, zero, p)(op)
+  }
+
+
+  def mFoldLeftWhileObserve[A, B](ma: M[A], zero: B, p: B => Boolean)(op: (B, A) => B): Observer[B] = {
+    mFoldLeftWhileObserveM(ma, observerCpsMonad.pure(zero), p) { (bObs, aObs) =>
       observerCpsMonad.flatMap(bObs) { b =>
         observerCpsMonad.flatMap(aObs) { a =>
           observerCpsMonad.pure(op(b, a))
@@ -149,6 +158,19 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
       }
     }
   }
+
+  def mFoldM[A,S](ma: M[A], s0: S)(op: (S,A) => M[S]): M[S] =
+    flatMap(msplit(ma)){
+      case None => pure(s0)
+      case Some((ta, sa)) =>
+        ta match
+          case Success(a) =>
+            flatMap(op(s0,a)){ s1 =>
+              mFoldM(sa,s1)(op)
+            }
+          case Failure(ex) =>
+            error(ex)
+    }
 
   def fromCollection[A](collect: IterableOnce[A]): M[A] = {
     def fromIt(it: Iterator[A]): M[A] =
@@ -160,6 +182,7 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     fromIt(collect.iterator)
   }
 
+
 }
 
 object CpsLogicMonad {
@@ -169,6 +192,32 @@ object CpsLogicMonad {
 
   }
 
+
+
+  def unfoldM[M[_],S,A](using m:CpsLogicMonad[M])(s0: S)(f: S => M[(A, S)]): M[A] = {
+    def loop(s: S): M[A] = {
+      m.flatMap(f(s)){
+        case (a, s1) =>
+          m.mplus(m.pure(a), loop(s1))
+      }
+    }
+    loop(s0)
+  }
+
+  def unfoldObserver[M[_],S,A](using m:CpsLogicMonad[M])(s0: S)(f: S => m.Observer[Option[(A, S)]]): M[A] = {
+
+    def loop(s: S): M[A] = {
+      m.flattenObserver(
+        m.observerCpsMonad.map(f(s)) {
+          case Some((a, s1)) => m.pure(a) || loop(s1)
+          case None => m.mzero
+        }
+      )
+    }
+
+    loop(s0)
+  }
+  
 }
 
 trait CpsLogicMonadContext[M[_]] extends CpsTryMonadContext[M] {
@@ -315,6 +364,19 @@ extension [M[_], A](ma: M[A])(using m: CpsLogicMonad[M])
     */
   def otherwise(thenp: => M[A]): M[A] =
     m.ifte(ma, (a: A) => m.pure(a), thenp)
+
+
+  def foldWhile[S](s0:S)(p: S=>Boolean)(op: (S,A)=> S): m.Observer[S]= {
+    m.mFoldLeftWhileObserveM(ma,m.observerCpsMonad.pure(s0),p){ (os, oa) =>
+      m.observerCpsMonad.flatMap(os){ s =>
+        m.observerCpsMonad.map(oa){ a =>
+          op(s,a)
+        }
+      }
+    }
+  }
+
+
 
 /** Should be used inside of reify block over CpsLogicMonad.
   * The next sequent code will be executed only if <code> p </code> is true,
