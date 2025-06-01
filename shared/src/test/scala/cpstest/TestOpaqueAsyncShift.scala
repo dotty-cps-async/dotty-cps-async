@@ -29,12 +29,17 @@ object Issue99Maybe1 {
       case a: A   => f(a).asInstanceOf[Issue99Maybe1[B]]
     }
 
-    def map_async[F[_]: CpsAsyncMonad, B](f: A => F[B]): F[Issue99Maybe1[B]] = self match {
-      case Absent => summon[CpsAsyncMonad[F]].pure(Absent)
-      case a: A   => summon[CpsAsyncMonad[F]].map(f(a))(b => b.asInstanceOf[Issue99Maybe1[B]])
+    def map_async[F[_], B](m: CpsAsyncMonad[F])(f: A => F[B]): F[Issue99Maybe1[B]] = self match {
+      case Absent => m.pure(Absent)
+      case a: A   => m.map(f(a))(b => b.asInstanceOf[Issue99Maybe1[B]])
     }
 
   }
+
+  // def map_async[F[_], A](cpsMonad: CpsAsyncMonad[F])(m: Issue99Maybe1[A])[B](f: A => F[B]): F[Issue99Maybe1[B]] = m match {
+  //  case Absent => cpsMonad.pure(Absent)
+  //  case a: A   => cpsMonad.map(f(a))(b => b.asInstanceOf[Issue99Maybe1[B]])
+  // }
 
 }
 
@@ -74,18 +79,16 @@ object Issue99Maybe2 {
 
 class TestOpaqueAsyncShift {
 
-  /*
   @Test
   def testShiftedMapOnOpaqueType1() = {
+    implicit val debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(20)
     val f = async[Future] {
-      val m = Issue99Maybe2(42)
+      val m = Issue99Maybe1(42)
       val r = m.map(x => Future.successful(x + 1).await)
-      assert(r == Issue99Maybe2(43))
+      assert(r == Issue99Maybe1(43))
       r
     }
   }
-
-   */
 
   /*
   @Test

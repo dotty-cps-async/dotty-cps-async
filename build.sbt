@@ -1,4 +1,5 @@
-val dottyVersion = "3.3.6"
+//val dottyVersion = "3.3.6"
+val dottyVersion = "3.7.2-RC1-bin-SNAPSHOT"
 
 import xerial.sbt.Sonatype.sonatypeCentralHost
 import scala.scalanative.build._

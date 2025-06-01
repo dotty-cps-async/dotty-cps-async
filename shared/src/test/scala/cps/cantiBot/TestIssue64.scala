@@ -9,12 +9,13 @@ class Test64 {
 
   given CpsSchedulingMonad[Future] = FutureAsyncMonad
 
-  def test(): Future[Unit] =
+  def test(): Future[Unit] = {
+    // given cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(20)
     async {
       ().thing()
     }
+  }
 
-  extension (value: Unit)
-    def thing[X]() = ()
+  extension (value: Unit) def thing[X]() = ()
 
 }
