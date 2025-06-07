@@ -3,6 +3,8 @@ package cps.macros.forest.application
 import cps.*
 import cps.macros.forest.*
 
+import scala.util.control.NonFatal
+
 enum ApplicationShiftType:
   case CPS_ONLY
   case CPS_RUNTIME_AWAIT
@@ -37,6 +39,7 @@ trait PartialShiftedApplyScope[F[_], CT, CC <: CpsMonadContext[F]]:
   ):
 
     def withTailArgs(argTails: List[ApplyArgsList], withAsync: Boolean): Term => Term = {
+
       def appliedToArgsOrTypeArgs(
           fun: Term,
           argTails: List[ApplyArgsList],
@@ -46,7 +49,26 @@ trait PartialShiftedApplyScope[F[_], CT, CC <: CpsMonadContext[F]]:
         val s = argTails.foldLeft(s0) { case ((term, fWasAdded), e) =>
           e match
             case ApplyTermArgsList(originApply, args) =>
-              (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
+              if (applyFlags.isExtensionMethod && applyFlags.useExtraArguments && !fWasAdded) then
+                term.tpe match
+                  case pt: PolyType =>
+                    // place for type parameters and extra argument. insert [F](m: CpsMonad[F])
+                    val typed = TypeApply(term, List(TypeTree.of[F]))
+                    val extraArg = cpsCtx.monad.asTerm
+                    val withNewArg = Apply.copy(originApply)(typed, List(extraArg))
+                    val withArg = Apply.copy(originApply)(withNewArg, args.map(argTransform).toList)
+                    (withArg, true)
+                  case _ => (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
+              else
+                try (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
+                catch
+                  case NonFatal(ex) =>
+                    println(s"exception in appliedToArgsOrTypeArgs, term.tpe=${term.tpe}")
+                    println(
+                      s"applyFlags.isExtensionMethod=${applyFlags.isExtensionMethod}, applyFlags.useExtraArguments=${applyFlags.useExtraArguments}, fWasAdded=$fWasAdded"
+                    )
+                    throw ex
+
             case ApplyTypeArgsList(originApply) =>
               if applyFlags.isExtensionMethod && applyFlags.useExtraArguments && !fWasAdded then
                 // add extra type parameter and arguemnt with monad to the shifted function

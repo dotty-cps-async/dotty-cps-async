@@ -77,17 +77,46 @@ object Issue99Maybe2 {
 
 }
 
+opaque type Issue99MyStringList = List[String]
+
+object Issue99MyStringList {
+
+  def apply(xs: String*): Issue99MyStringList = xs.toList
+
+  extension (self: Issue99MyStringList) {
+
+    def isEmpty: Boolean = self.isEmpty
+
+    def head: String = self.head
+
+    def map(f: String => String): Issue99MyStringList = self.map(f)
+
+    def map_async[F[_]](m: CpsAsyncMonad[F])(f: String => F[String]): F[Issue99MyStringList] = {
+      self
+        .foldRight(m.pure(List.empty[String])) { (e, acc) =>
+          m.flatMap(acc) { list =>
+            m.map(f(e))(b => b :: list)
+          }
+        }
+        .asInstanceOf[F[Issue99MyStringList]]
+    }
+
+  }
+
+}
+
 class TestOpaqueAsyncShift {
 
   @Test
   def testShiftedMapOnOpaqueType1() = {
-    implicit val debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(20)
+    // implicit val debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(20)
     val f = async[Future] {
       val m = Issue99Maybe1(42)
       val r = m.map(x => Future.successful(x + 1).await)
       assert(r == Issue99Maybe1(43))
       r
     }
+    FutureCompleter(f)
   }
 
   /*
@@ -102,5 +131,17 @@ class TestOpaqueAsyncShift {
   }
 
    */
+
+  @Test
+  def testOpaqueShiftWithoutTypeParams() = {
+    // implicit val debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(20)
+    val f = async[Future] {
+      val m = Issue99MyStringList("a", "b", "c")
+      val r = m.map(x => Future.successful(x + "a").await)
+      assert(r.head == "aa")
+      r
+    }
+    FutureCompleter(f)
+  }
 
 }

@@ -9,6 +9,8 @@ import cps.macros.common.*
 import cps.macros.misc.*
 import cps.macros.forest.application.{ApplicationShiftType, PartialShiftedApplyFlags}
 
+import javax.lang.model.util.Elements.Origin
+
 trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
 
   thisTreeTransform: TreeTransformScope[F, CT, CC] =>
@@ -838,7 +840,8 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     def checkInplaceAsyncMethodCandidate(
         methodSym: Symbol,
         qual: Term,
-        targs: List[TypeTree]
+        targs: List[TypeTree],
+        originMethodSymbol: Symbol
     ): Either[MessageWithPos, PartialShiftedApplyFlags] =
       val paramSymss = methodSym.paramSymss
       val mPos = methodSym.pos.getOrElse(qual.pos)
@@ -879,7 +882,9 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                   mPos
                 )
               )
-            else Right(PartialShiftedApplyFlags(false, isExtensionMethod, -1))
+            else
+              val useExtraArgs = paramSymss.length > originMethodSymbol.paramSymss.length
+              Right(PartialShiftedApplyFlags(useExtraArgs, isExtensionMethod, -1))
         else
           val typeArgsShifted = paramSymss.head.filter(_.isType)
           val nTypeArgsShifted = typeArgsShifted.length
@@ -905,6 +910,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         qual: Term,
         shiftedName: String,
         targs: List[TypeTree],
+        originMethodSymbol: Symbol,
         pos: Position
     ): Either[List[MessageWithPos], PartialShiftedApply] =
       // val qual = x.qualifier
@@ -919,7 +925,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         case Nil =>
           Left(List())
         case m :: Nil =>
-          checkInplaceAsyncMethodCandidate(m, qual, targs) match
+          checkInplaceAsyncMethodCandidate(m, qual, targs, originMethodSymbol) match
             case Left(error) => Left(List(error))
             case Right(flags) =>
               val newArgs = shiftArgs()
@@ -939,7 +945,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           while (!c.isEmpty) {
             val sym = c.head
             c = c.tail
-            checkInplaceAsyncMethodCandidate(sym, qual, targs) match
+            checkInplaceAsyncMethodCandidate(sym, qual, targs, originMethodSymbol) match
               case Left(e) => errors = e :: errors
               case Right(flags) =>
                 if flags.useExtraArguments then
@@ -1027,7 +1033,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           errors.foreach(e => report.warning(e.message))
 
       val shiftedName = xName + "_async"
-      findInplaceAsyncMethodCall(qual, shiftedName, targs, x.pos) match
+      findInplaceAsyncMethodCall(qual, shiftedName, targs, x.symbol, x.pos) match
         case Right(t) =>
           if (cpsCtx.flags.debugLevel >= 15) then
             cpsCtx.log(s"shiftSelectTypeApplyApplyClear: found shiftedName=${shiftedName} for qual=${qual.show}: ${t}")
@@ -1035,7 +1041,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         case Left(funErrors) =>
           val funErrors0 = funErrors
           val shiftedName1 = xName + "Async"
-          findInplaceAsyncMethodCall(qual, shiftedName1, targs, x.pos) match
+          findInplaceAsyncMethodCall(qual, shiftedName1, targs, x.symbol, x.pos) match
             case Right(t) => t
             case Left(funErrors) =>
               val (asyncShiftSearch, askedShiftedType) = findAsyncShiftTerm(qual)
