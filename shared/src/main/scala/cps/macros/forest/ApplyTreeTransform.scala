@@ -151,10 +151,11 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         if (cpsObj1.isAsync)
           cpsObj1 match
             case lt: AsyncLambdaCpsTree =>
-              println(s"cpsObj1=$cpsObj1")
-              println(s"method=$method")
-              println(s"targs=$targs")
-              ???
+              cpsCtx.log("Encoured AsyncLambdaCpsTree as object in TypeApply, this is not implemented yet")
+              throw MacroError(
+                s"AsyncLambdaCpsTree as object in TypeApply is not supported yet, method=${method}, targs=${targs}, args=${args}",
+                posExprs(applyTerm, fun)
+              )
             case cls: CallChainSubstCpsTree =>
               // check - is shifted have such name.
               val shifted = cls.shifted
@@ -179,16 +180,11 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       case objApply @ Apply(fun1, args1) =>
         // SIP-47 or exception methods.
         //   full expression ave type: Apply(TypeApply(Apply(fun1,args1),targs), args)
-        println(s"!!!: applyTerm = ${applyTerm.show}")
-        println(s"!!!: applyterm.tree = ${applyTerm}")
         val typeArgsList = ApplyTypeArgsList(fun)
         val paramsDescriptor = MethodParamsDescriptor(fun1)
-        println(s"!!!: fun1 = ${fun1.show}")
-        println(s"!!!: fun1.tpe = ${fun1.tpe.show}")
         val argsRecords = O.buildApplyArgsRecords(paramsDescriptor, args /*, cpsCtx*/ )(owner)
         val termArgsList = ApplyTermArgsList(applyTerm, argsRecords)
         val result = runApply(applyTerm, fun1, args1, typeArgsList :: termArgsList :: tails)(owner)
-        println(s"!!!result: $result")
         result
       case _ =>
         //
