@@ -286,7 +286,11 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
             if (cpsBody.isChanged) then
               // for lts variant
               // if (term.tpe.isContextFunctionType && !allowUncontext) then
-              //  throw MacroError("Can't transform context function: TastyAPI don;t support this yet", posExpr(term))
+              //  throw MacroError(
+              //    "Can't transform context function: TastyAPI in scala-lts don't support this yet.\n" +
+              //      "Note, that if you can use non-lts scala version, than this case is supported in dotty-cps-async-next",
+              //    posExpr(term)
+              //  )
               // else
               //  val mt = MethodType(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
               //  Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
@@ -330,7 +334,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       identType match
         case idmt @ MethodType(paramNames, paramTypes, resType) =>
           val mt = shiftType match
-            case ApplicationShiftType.CPS_ONLY  => cpsShiftedMethodType(paramNames, paramTypes, resType)
+            case ApplicationShiftType.CPS_ONLY          => cpsShiftedMethodType(paramNames, paramTypes, resType)
             case ApplicationShiftType.CPS_RUNTIME_AWAIT => idmt
             case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
               throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call shiftedArgExpr ", term.asExpr)
@@ -559,7 +563,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case Some(shiftType) =>
           val rType = shiftType match
             case ApplicationShiftType.CPS_ONLY             => TypeRepr.of[F].appliedTo(List(term.tpe.widen))
-            case ApplicationShiftType.CPS_RUNTIME_AWAIT            => term.tpe.widen
+            case ApplicationShiftType.CPS_RUNTIME_AWAIT    => term.tpe.widen
             case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN => term.tpe.widen
           val mt = MethodType(List())(_ => List(), _ => rType)
           Lambda(
