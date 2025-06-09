@@ -7,52 +7,50 @@ import cps.testconfig.given
 import java.util.Timer
 import java.util.TimerTask
 
-
 object TestTimer:
 
-   lazy val timer = new java.util.Timer()
+  lazy val timer = new java.util.Timer()
 
-   type CancelToken = java.util.TimerTask
+  type CancelToken = java.util.TimerTask
 
-   def delay(duration: FiniteDuration):Future[FiniteDuration] = {
-      val p = Promise[FiniteDuration]
-      val timerTask = new TimerTask {
-          
-          override def run(): Unit = {
-             p.trySuccess(duration)
-          }
+  def delay(duration: FiniteDuration): Future[FiniteDuration] = {
+    val p = Promise[FiniteDuration]
+    val timerTask = new TimerTask {
 
-          override def cancel(): Boolean = {
-             val retval = super.cancel()
-             if (retval) {
-               p.tryFailure(new CancellationException())
-             }
-             retval
-         }
+      override def run(): Unit = {
+        p.trySuccess(duration)
       }
-      timer.schedule(timerTask, duration.toMillis)
-      p.future
-   }
 
-
-   def schedule(duration: FiniteDuration)(f: =>Unit): CancelToken = {
-     val timerTask = new TimerTask {
-       override def run(): Unit = {
-         try{
-           f
-         }catch{
-           case ex: Throwable =>
-            ex.printStackTrace()
-            throw ex
-         }
-       }
-     }
-     timer.schedule(timerTask, duration.toMillis)
-     timerTask
-   }
-
-   def cancel(ct: CancelToken): Unit = {
-    ct.cancel()
+      override def cancel(): Boolean = {
+        val retval = super.cancel()
+        if (retval) {
+          p.tryFailure(new CancellationException())
+        }
+        retval
+      }
+    }
+    timer.schedule(timerTask, duration.toMillis)
+    p.future
   }
 
+  def schedule(duration: FiniteDuration)(f: => Unit): CancelToken = {
+    val timerTask = new TimerTask {
+      override def run(): Unit = {
+        println("timer called java.util.TimerTask.run")
+        try {
+          f
+        } catch {
+          case ex: Throwable =>
+            ex.printStackTrace()
+            throw ex
+        }
+      }
+    }
+    println("call java.util.Timer.schedule")
+    timer.schedule(timerTask, duration.toMillis)
+    timerTask
+  }
 
+  def cancel(ct: CancelToken): Unit = {
+    ct.cancel()
+  }

@@ -10,17 +10,22 @@ import reporting.*
 
 import scala.util.matching.Regex
 
-
 class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
 
-  def compileFiles(files: List[String], outDir: String, extraArgs: List[String]=List.empty, checkAll: Boolean = true, usePlugin: Boolean=true): Reporter = {
+  def compileFiles(
+      files: List[String],
+      outDir: String,
+      extraArgs: List[String] = List.empty,
+      checkAll: Boolean = true,
+      usePlugin: Boolean = true
+  ): Reporter = {
     val args = List("-d", outDir) ++
-             (if (usePlugin) then List("-Xplugin:src/main/resources") else List.empty) ++
-             compilerClasspathOption ++
-             extraArgs ++
-             DotcInvocations.defaultCompileOpts ++
-             (if (scalaJs) List("-scalajs") else List.empty) ++
-             (if (checkAll) List("-Ycheck:all") else List.empty)
+      (if (usePlugin) then List("-Xplugin:src/main/resources") else List.empty) ++
+      compilerClasspathOption ++
+      extraArgs ++
+      DotcInvocations.defaultCompileOpts ++
+      (if (scalaJs) List("-scalajs") else List.empty) ++
+      (if (checkAll) List("-Ycheck:all") else List.empty)
     println(s"compile args: ${args}, usePlugin=${usePlugin}")
     compileFilesWithFullArgs(files, outDir, args)
   }
@@ -40,19 +45,35 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     compileFilesWithFullArgs(files, outDir, args)
   }
 
-
-  def compileFilesInDirs(dirs: List[String], outDir: String, extraArgs: List[String] = List.empty, checkAll: Boolean = true, usePlugin: Boolean=true): Reporter = {
+  def compileFilesInDirs(
+      dirs: List[String],
+      outDir: String,
+      extraArgs: List[String] = List.empty,
+      checkAll: Boolean = true,
+      usePlugin: Boolean = true
+  ): Reporter = {
     val files = dirs.flatMap { dir => scalaFilesIn(Path(dir)) }
     compileFiles(files, outDir, extraArgs, checkAll, usePlugin)
   }
 
-  def compileFilesInDir(dir: String, outDir: String, extraArgs: List[String]=List.empty, checkAll:Boolean = true, usePlugin: Boolean = true): Reporter = {
+  def compileFilesInDir(
+      dir: String,
+      outDir: String,
+      extraArgs: List[String] = List.empty,
+      checkAll: Boolean = true,
+      usePlugin: Boolean = true
+  ): Reporter = {
     compileFilesInDirs(List(dir), outDir, extraArgs, checkAll, usePlugin)
   }
 
-
-
-  def compileAndRunFilesInDirsJVM(dirs: List[String], outDir: String, mainClass:String = "Main", extraArgs: List[String] = List.empty, checkAll: Boolean=true, usePlugin: Boolean=true): (Int,String) = {
+  def compileAndRunFilesInDirsJVM(
+      dirs: List[String],
+      outDir: String,
+      mainClass: String = "Main",
+      extraArgs: List[String] = List.empty,
+      checkAll: Boolean = true,
+      usePlugin: Boolean = true
+  ): (Int, String) = {
     val reporter = compileFilesInDirs(dirs, outDir, extraArgs, checkAll, usePlugin)
     if (reporter.hasErrors) {
       println(s"Compilation failed in dirs ${dirs}")
@@ -63,8 +84,14 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     }
   }
 
-
-  def compileAndRunFilesInDirJVM(dir: String, outDir: String, mainClass:String = "Main", extraArgs: List[String] = List.empty, checkAll: Boolean=true, usePlugin: Boolean=true): (Int,String) = {
+  def compileAndRunFilesInDirJVM(
+      dir: String,
+      outDir: String,
+      mainClass: String = "Main",
+      extraArgs: List[String] = List.empty,
+      checkAll: Boolean = true,
+      usePlugin: Boolean = true
+  ): (Int, String) = {
     compileAndRunFilesInDirsJVM(List(dir), outDir, mainClass, extraArgs, checkAll, usePlugin)
   }
 
@@ -73,12 +100,11 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     DotcInvocations.runJVMInClasspath(mainClass, classpath, timeout)
   }
 
-
-  /**
-   * Recursively list all scala files in a given path
-   * @param path
-   * @return list of scala files
-   */
+  /** Recursively list all scala files in a given path
+    * @param path
+    * @return
+    *   list of scala files
+    */
   def scalaFilesIn(path: Path): List[String] = {
     if (!path.exists) {
       throw new RuntimeException(s"Path ${path} does not exist")
@@ -96,7 +122,7 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
   val reporter = new Reporter {
     override def doReport(d: Diagnostic)(implicit ctx: Context): Unit = {
       if (!silent) {
-         println(d)
+        println(d)
       }
     }
   }
@@ -120,24 +146,16 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
 
 }
 
-
-case class TestRun(inputDir: String, mainClass: String, expectedOutput: String = "Ok\n", extraDotcArgs:List[String] = List.empty)
-
-
-
+case class TestRun(inputDir: String, mainClass: String, expectedOutput: String = "Ok\n", extraDotcArgs: List[String] = List.empty)
 
 case class DotcInvocationArgs(
-                               extraDotcArgs: List[String] = List.empty,
-                               silent: Boolean = true,
-                               checkAll: Boolean = true,
-                               usePlugin: Boolean = true,
-                               useScalaJsLib: Boolean = false,
-                               outDir: Option[String] = None,
-                             )
-
-
-
-
+    extraDotcArgs: List[String] = List.empty,
+    silent: Boolean = true,
+    checkAll: Boolean = true,
+    usePlugin: Boolean = true,
+    useScalaJsLib: Boolean = false,
+    outDir: Option[String] = None
+)
 
 object DotcInvocations {
 
@@ -146,37 +164,37 @@ object DotcInvocations {
   val defaultCompileOpts: List[String] = {
     // note, that -Ycheck:all is not included here, because it is added conditionally
     List(
-      //"-Ydebug-error",
-      //"--unique-id",
-      //"-Xcheck-macros",
+      // "-Ydebug-error",
+      // "--unique-id",
+      // "-Xcheck-macros",
       "-Ydebug",
-      //"-Yprint-syms",
-      //"-explain",
-      //List("-Yprint-debug") ++
-      //List("-Yshow-tree-ids") ++
-      //List("-verbose") ++
-      //List("-unchecked") ++
-       "--color:never",
+      // "-Yprint-syms",
+      // "-explain",
+      // List("-Yprint-debug") ++
+      // List("-Yshow-tree-ids") ++
+      // List("-verbose") ++
+      // List("-unchecked") ++
+      "--color:never"
       // "-Vprint:erasure",
-      // "-Vprint:rssh.cps",
-      //"-Vprint:inlining"
-      //List("-Vprint:constructors") ++
-      //List("-Vprint:lambdaLift") ++
-      //List("-Xshow-phases") ++
+      // "-Vprint:rssh.cps"
+      // "-Vprint:inlining"
+      // List("-Vprint:constructors") ++
+      // List("-Vprint:lambdaLift") ++
+      // List("-Xshow-phases") ++
     )
   }
 
-
-
-
-
   def compileFilesInDir(dir: String, invocationArgs: DotcInvocationArgs = DotcInvocationArgs()): Reporter = {
     val dotcInvocations = new DotcInvocations(invocationArgs.silent)
-    dotcInvocations.compileFilesInDir(dir, invocationArgs.outDir.getOrElse(s"${dir}-classes"),
-      invocationArgs.extraDotcArgs, invocationArgs.checkAll, invocationArgs.usePlugin)
+    dotcInvocations.compileFilesInDir(
+      dir,
+      invocationArgs.outDir.getOrElse(s"${dir}-classes"),
+      invocationArgs.extraDotcArgs,
+      invocationArgs.checkAll,
+      invocationArgs.usePlugin
+    )
     dotcInvocations.reporter
   }
-
 
   def succesfullyCompileFilesInDir(dir: String, invocationArgs: DotcInvocationArgs = DotcInvocationArgs()): Unit = {
     val reporter = compileFilesInDir(dir, invocationArgs)
@@ -184,34 +202,43 @@ object DotcInvocations {
   }
 
   def compileAndRunFilesInDirAndCheckResult(
-                                  dir: String,
-                                  mainClass: String,
-                                  expectedOutput: String = "Ok\n",
-                                  invocationArgs: DotcInvocationArgs = DotcInvocationArgs()
-                                           ): Unit = {
+      dir: String,
+      mainClass: String,
+      expectedOutput: String = "Ok\n",
+      invocationArgs: DotcInvocationArgs = DotcInvocationArgs()
+  ): Unit = {
     val dotcInvocations = new DotcInvocations(invocationArgs.silent)
 
-    val (code, output) = dotcInvocations.compileAndRunFilesInDirJVM(dir,invocationArgs.outDir.getOrElse(s"${dir}-classes"),
-      mainClass,invocationArgs.extraDotcArgs,invocationArgs.checkAll,invocationArgs.usePlugin)
+    val (code, output) = dotcInvocations.compileAndRunFilesInDirJVM(
+      dir,
+      invocationArgs.outDir.getOrElse(s"${dir}-classes"),
+      mainClass,
+      invocationArgs.extraDotcArgs,
+      invocationArgs.checkAll,
+      invocationArgs.usePlugin
+    )
 
     val reporter = dotcInvocations.reporter
     println(s"summary in ${dir}: " + reporter.summary)
     checkReporter(reporter)
 
-    //println(s"output=${output}")
+    // println(s"output=${output}")
     assert(output.endsWith(expectedOutput), s"The output should ends with '$expectedOutput', we have '$output''")
 
   }
 
-
-
   def checkRuns(selection: Regex = Regex(".*"), dotcArgs: DotcInvocationArgs = DotcInvocationArgs())(
-                 runs: TestRun*
-               ): Unit = {
-    for(r <- runs) {
-       if (selection.matches(r.inputDir)) {
-         compileAndRunFilesInDirAndCheckResult(r.inputDir,r.mainClass,r.expectedOutput,dotcArgs.copy(extraDotcArgs = dotcArgs.extraDotcArgs ++ r.extraDotcArgs))
-       }
+      runs: TestRun*
+  ): Unit = {
+    for (r <- runs) {
+      if (selection.matches(r.inputDir)) {
+        compileAndRunFilesInDirAndCheckResult(
+          r.inputDir,
+          r.mainClass,
+          r.expectedOutput,
+          dotcArgs.copy(extraDotcArgs = dotcArgs.extraDotcArgs ++ r.extraDotcArgs)
+        )
+      }
     }
   }
 
@@ -219,20 +246,19 @@ object DotcInvocations {
     var isAlreadyCompiled: Boolean
   }
 
-
   case class Dependency(
-                         sourceDir: String,
-                         compiledFlag: IsAlreadyCompiledFlag
-                       ) {
+      sourceDir: String,
+      compiledFlag: IsAlreadyCompiledFlag
+  ) {
     def outDir = s"${sourceDir}-classes"
   }
 
-
-  def compileAndRunJunitTestAfterDependency(dirname: String,
-                                            testClassName: String,
-                                            invocationArgs: DotcInvocationArgs = DotcInvocationArgs(),
-                                            dependency: Dependency
-                                  ): Unit = {
+  def compileAndRunJunitTestAfterDependency(
+      dirname: String,
+      testClassName: String,
+      invocationArgs: DotcInvocationArgs = DotcInvocationArgs(),
+      dependency: Dependency
+  ): Unit = {
     if (!dependency.compiledFlag.isAlreadyCompiled) {
       DotcInvocations.succesfullyCompileFilesInDir(dependency.sourceDir, invocationArgs)
       dependency.compiledFlag.isAlreadyCompiled = true
@@ -292,7 +318,6 @@ object DotcInvocations {
     }
   }
 
-
   def reportErrors(reporter: Reporter): Unit = {
     if (!reporter.allErrors.isEmpty) {
       for (err <- reporter.allErrors) {
@@ -309,7 +334,8 @@ object DotcInvocations {
   private def currentJsClasspath: String = {
     // substitue the jvm cps classes to js cps classes
     val classpath = System.getProperty("java.class.path")
-    val jsClasspath = classpath.replaceAll("dotty-cps-async/jvm/target/scala-3.3.3/classes", "dotty-cps-async/js/target/scala-3.3.3/classes")
+    val jsClasspath =
+      classpath.replaceAll("dotty-cps-async/jvm/target/scala-3.3.3/classes", "dotty-cps-async/js/target/scala-3.3.3/classes")
     jsClasspath
   }
 

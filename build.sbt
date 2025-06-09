@@ -1,10 +1,11 @@
 val dottyVersion = "3.7.0"
+//val dottyVersion = "3.7.2-RC1-bin-SNAPSHOT"
 
 import xerial.sbt.Sonatype.sonatypeCentralHost
 import scala.scalanative.build._
 
 
-ThisBuild/version := "1.0.2"
+ThisBuild/version := "1.0.3-SNAPSHOT"
 ThisBuild/versionScheme := Some("semver-spec")
 //ThisBuild/resolvers ++= Opts.resolver.sonatypeOssSnapshots
 ThisBuild/sonatypeCredentialHost := sonatypeCentralHost

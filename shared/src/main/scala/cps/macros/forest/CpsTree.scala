@@ -1,12 +1,14 @@
 package cps.macros.forest
 
 import scala.collection.immutable.Queue
-import scala.quoted._
-import cps._
-import cps.macros._
-import cps.macros.common._
-import cps.macros.misc._
+import scala.quoted.*
+import cps.*
+import cps.macros.*
+import cps.macros.common.*
+import cps.macros.misc.*
 import cps.macros.forest.application.ApplicationShiftType
+
+import scala.util.control.NonFatal
 
 trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
@@ -79,7 +81,12 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
         t.tpe.widen match
           case MethodType(_, _, _) | PolyType(_, _, _) =>
             val ext = t.etaExpand(Symbol.spliceOwner)
-            ext.asExprOf[T]
+            try ext.asExprOf[T]
+            catch
+              case NonFatal(ex) =>
+                println(s"Exception during etaExpand sealing to T, T=${TypeRepr.of[T].show},t.tpe=${t.tpe}")
+                println(s"t = $t")
+                throw ex;
           case _ =>
             t.asExprOf[T]
 

@@ -8,7 +8,7 @@ import cps.*
 import cps.macros.*
 import cps.macros.common.*
 import cps.macros.forest.*
-import cps.macros.forest.application.ApplicationShiftType.{CPS_AWAIT, CPS_DEFERR_TO_PLUGIN}
+import cps.macros.forest.application.ApplicationShiftType.{CPS_RUNTIME_AWAIT, CPS_DEFERR_TO_PLUGIN}
 import cps.macros.misc.*
 
 trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
@@ -35,15 +35,21 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         else cpsDirectArg
       )
 
-    def mergeSeq(seq: Seq[ApplyArgRecord]): ApplyArgsSummaryPropertiesStep1 =
-      seq.foldLeft(this)((s, e) => s.merge(e))
+    def mergeArgsList(argsList: ApplyArgsList): ApplyArgsSummaryPropertiesStep1 = {
+      argsList match {
+        case ApplyTermArgsList(t, seq) =>
+          seq.foldLeft(this)((s, e) => s.merge(e))
+        case ApplyTypeArgsList(originTypeAplly) => this
+      }
 
-    def mergeSeqSeq(seqSeq: Seq[Seq[ApplyArgRecord]]): ApplyArgsSummaryPropertiesStep1 =
-      seqSeq.foldLeft(this)((s, e) => s.mergeSeq(e))
+    }
+
+    def mergeSeqSeq(seqSeq: Seq[ApplyArgsList]): ApplyArgsSummaryPropertiesStep1 =
+      seqSeq.foldLeft(this)((s, e) => s.mergeArgsList(e))
 
   object ApplyArgsSummaryPropertiesStep1:
 
-    def mergeSeqSeq(args: Seq[Seq[ApplyArgRecord]]): ApplyArgsSummaryPropertiesStep1 =
+    def mergeSeqSeq(args: Seq[ApplyArgsList]): ApplyArgsSummaryPropertiesStep1 =
       val zero = ApplyArgsSummaryPropertiesStep1(0, false, false, false, None)
       zero.mergeSeqSeq(args)
 
@@ -57,20 +63,34 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def shouldBeChangedSync: Boolean = step1.shouldBeChangedSync
     def cpsDirectArg: Option[Term] = step1.cpsDirectArg
 
-    def mergeStep2SeqSeq(seqSeq: Seq[Seq[ApplyArgRecord]]): ApplyArgsSummaryProperties =
+    def mergeStep2SeqSeq(seqSeq: Seq[ApplyArgsList]): ApplyArgsSummaryProperties =
       seqSeq.foldLeft(this)((s, e) => s.mergeStep2Seq(e))
 
-    def mergeStep2Seq(seq: Seq[ApplyArgRecord]): ApplyArgsSummaryProperties =
-      seq.foldLeft(this)((s, e) => s.mergeStep2(e))
+    def mergeStep2Seq(args: ApplyArgsList): ApplyArgsSummaryProperties = {
+      args match {
+        case ApplyTermArgsList(t, seq) =>
+          seq.foldLeft(this)((s, e) => s.mergeStep2(e))
+        case ApplyTypeArgsList(originTypeAplly) =>
+          // no args, nothing to do
+          this
+      }
+    }
 
     def mergeStep2(r: ApplyArgRecord): ApplyArgsSummaryProperties =
       ApplyArgsSummaryProperties(step1 = step1, usePrepend = usePrepend || r.usePrepend(step1.hasAsync))
 
   object ApplyArgsSummaryProperties:
 
-    def mergeSeqSeq(seqSeq: Seq[Seq[ApplyArgRecord]]): ApplyArgsSummaryProperties =
+    def mergeSeqSeq(seqSeq: Seq[ApplyArgsList]): ApplyArgsSummaryProperties =
       val step1 = ApplyArgsSummaryPropertiesStep1.mergeSeqSeq(seqSeq)
       ApplyArgsSummaryProperties(step1, false).mergeStep2SeqSeq(seqSeq)
+
+  sealed trait ApplyArgsList
+
+  case class ApplyTermArgsList(originApply: Term, args: Seq[ApplyArgRecord]) extends ApplyArgsList
+  case class ApplyTypeArgsList(originTypeAplly: TypeApply) extends ApplyArgsList {
+    def targs: List[TypeTree] = originTypeAplly.args
+  }
 
   sealed trait ApplyArgRecord:
     def term: Term
@@ -311,7 +331,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case idmt @ MethodType(paramNames, paramTypes, resType) =>
           val mt = shiftType match
             case ApplicationShiftType.CPS_ONLY  => cpsShiftedMethodType(paramNames, paramTypes, resType)
-            case ApplicationShiftType.CPS_AWAIT => idmt
+            case ApplicationShiftType.CPS_RUNTIME_AWAIT => idmt
             case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
               throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call shiftedArgExpr ", term.asExpr)
           createAsyncLambda(mt, params, shiftType, Symbol.spliceOwner)
@@ -323,7 +343,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
             val paramNames = params.map(_.name)
             val mt = shiftType match
               case ApplicationShiftType.CPS_ONLY => cpsShiftedMethodType(paramNames, paramTypes, resType)
-              case ApplicationShiftType.CPS_AWAIT =>
+              case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
                 MethodType(paramNames)(_ => paramTypes, _ => resType)
               case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
                 throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call shiftedArgExpr ", term.asExpr)
@@ -356,7 +376,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
     override def shift(): ApplyArgRecord = copy(optShiftType = Some(ApplicationShiftType.CPS_ONLY))
     override def withRuntimeAwait(runtimeAwait: Term): ApplyArgRecord =
-      copy(optShiftType = Some(ApplicationShiftType.CPS_AWAIT), optRuntimeAwait = Some(runtimeAwait))
+      copy(optShiftType = Some(ApplicationShiftType.CPS_RUNTIME_AWAIT), optRuntimeAwait = Some(runtimeAwait))
 
     def append(a: CpsTree): CpsTree =
       report.warning("lambda in statement position", term.pos)
@@ -426,7 +446,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                           shiftType match
                             case ApplicationShiftType.CPS_ONLY =>
                               termCast[ttt](nTerm)
-                            case ApplicationShiftType.CPS_AWAIT =>
+                            case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
                               optRuntimeAwait match
                                 case Some(runtimeAwait) =>
                                   applyRuntimeAwait(runtimeAwait, nTerm, TypeRepr.of[ttt]).asExprOf[ttt]
@@ -454,7 +474,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       val transformedBody = cpsBody.transformed
       val nBody = shiftType match
         case ApplicationShiftType.CPS_ONLY => transformedBody
-        case ApplicationShiftType.CPS_AWAIT =>
+        case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
           optRuntimeAwait match
             case Some(runtimeAwait) =>
               applyRuntimeAwait(runtimeAwait, transformedBody, mt.resType)
@@ -539,7 +559,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case Some(shiftType) =>
           val rType = shiftType match
             case ApplicationShiftType.CPS_ONLY             => TypeRepr.of[F].appliedTo(List(term.tpe.widen))
-            case ApplicationShiftType.CPS_AWAIT            => term.tpe.widen
+            case ApplicationShiftType.CPS_RUNTIME_AWAIT            => term.tpe.widen
             case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN => term.tpe.widen
           val mt = MethodType(List())(_ => List(), _ => rType)
           Lambda(
@@ -549,7 +569,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
               val transformedBody = cpsTree.transformed
               val nBody = shiftType match
                 case ApplicationShiftType.CPS_ONLY => transformedBody
-                case ApplicationShiftType.CPS_AWAIT =>
+                case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
                   optRuntimeAwait match
                     case Some(runtimeAwait) =>
                       applyRuntimeAwait(runtimeAwait, transformedBody, rType)
@@ -567,7 +587,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     override def shift() = copy(optShiftType = Some(ApplicationShiftType.CPS_ONLY))
 
     override def withRuntimeAwait(runtimeAwait: qctx.reflect.Term): ApplyArgRecord =
-      copy(optShiftType = Some(ApplicationShiftType.CPS_AWAIT), optRuntimeAwait = Some(runtimeAwait))
+      copy(optShiftType = Some(ApplicationShiftType.CPS_RUNTIME_AWAIT), optRuntimeAwait = Some(runtimeAwait))
 
     override def append(tree: CpsTree): CpsTree =
       throw MacroError("Impossible: preprend in by-name", term.asExpr)
