@@ -10,7 +10,7 @@ given UseCompilerPlugin.type = UseCompilerPlugin
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class TestCase:
   val objs = Seq(
     new AnyRef:
