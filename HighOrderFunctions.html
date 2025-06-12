@@ -6,7 +6,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
-    <title>High-order functions. &#8212; dotty-cps-async 1.0.2 documentation</title>
+    <title>High-order functions. &#8212; dotty-cps-async 1.0.3 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/nature.css" />
     <link rel="stylesheet" type="text/css" href="_static/css/s4defs-roles.css" />
@@ -33,7 +33,7 @@
         <li class="right" >
           <a href="BasicUsage.html" title="Dependency"
              accesskey="P">previous</a> |</li>
-        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.0.2 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.0.3 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">High-order functions.</a></li> 
       </ul>
     </div>  
@@ -139,12 +139,35 @@ Such a ‘shifted’ version has an additional type parameter <code class="docut
 <span class="w">    </span><span class="n">m</span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="p">))(</span><span class="n">_</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">sendSignal</span><span class="p">(</span><span class="n">x</span><span class="p">);</span><span class="w"> </span><span class="n">old</span><span class="w"> </span><span class="p">})</span><span class="w"></span>
 </pre></div>
 </div>
-<dl class="simple">
-<dt>As we have seen, shifted functions have an additional type parameter: <code class="docutils literal notranslate"><span class="pre">F[_]</span></code> and a parameter <a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L20"><code class="docutils literal notranslate"><span class="pre">CpsMonad[F]</span></code></a> (or a more specific type, if needed).  Async transformer will substitute the call of <code class="docutils literal notranslate"><span class="pre">modify</span></code> into <code class="docutils literal notranslate"><span class="pre">modify_async</span></code> during compilation.</dt><dd><p>Sometimes, we already have <code class="docutils literal notranslate"><span class="pre">F[_]</span></code> as the type parameter of the enclosing class. In such a case, we can omit those additional parameters in the async variant.</p>
-</dd>
-<dt>Note that you should carefully decide whether you need async function support and how to deal with concurrent modifications.  For example, in the code snippet below, different changes will interleave with each other.</dt><dd><p>Usually, low-level constructs do not need async counterparts.</p>
-</dd>
-</dl>
+<p>As we have seen, shifted functions have an additional type parameter: <code class="docutils literal notranslate"><span class="pre">F[_]</span></code> and a parameter <a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L20"><code class="docutils literal notranslate"><span class="pre">CpsMonad[F]</span></code></a> (or a more specific type, if needed).  Async transformer will substitute the call of <code class="docutils literal notranslate"><span class="pre">modify</span></code> into <code class="docutils literal notranslate"><span class="pre">modify_async</span></code> during compilation.
+Sometimes, we already have <code class="docutils literal notranslate"><span class="pre">F[_]</span></code> as the type parameter of the enclosing class. In such a case, we can omit those additional parameters in the async variant.</p>
+<p>Note that you should carefully decide whether you need async function support and how to deal with concurrent modifications.  For example, in the code snippet below, different changes will interleave with each other.
+Usually, low-level constructs do not need async counterparts.</p>
+</section>
+<section id="extension-interface">
+<h3>Extension interface.<a class="headerlink" href="#extension-interface" title="Permalink to this heading">¶</a></h3>
+<p>Also, you can shift extension methods like the object interface: a shifted extension method should be an extension of the same type, and as in
+the previous case, you can supply an external type parameter and argument list in the method definition.</p>
+<p>Example:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">opaque</span><span class="w"> </span><span class="k">type</span><span class="w"> </span><span class="nc">OrNull</span><span class="p">[</span><span class="nc">T</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">T</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nc">Null</span><span class="w"></span>
+
+<span class="k">object</span><span class="w"> </span><span class="nc">OrNull</span><span class="p">:</span><span class="w"></span>
+
+<span class="w">  </span><span class="n">extenstion</span><span class="w"> </span><span class="p">(</span><span class="n">self</span><span class="p">:</span><span class="w"> </span><span class="nc">OrNull</span><span class="p">[</span><span class="nc">T</span><span class="p">])</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">def</span><span class="w"> </span><span class="nf">map</span><span class="p">[</span><span class="nc">S</span><span class="p">](</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">T</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">S</span><span class="p">):</span><span class="w"> </span><span class="nc">OrNull</span><span class="p">[</span><span class="nc">S</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">self</span><span class="w"> </span><span class="k">match</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="kc">null</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">def</span><span class="w"> </span><span class="nf">map_async</span><span class="p">[</span><span class="nc">F</span><span class="p">[</span><span class="n">_</span><span class="p">],</span><span class="nc">S</span><span class="p">](</span><span class="n">m</span><span class="p">:</span><span class="w"> </span><span class="nc">CpsMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">])(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">T</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">S</span><span class="p">]):</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">OrNull</span><span class="p">[</span><span class="nc">S</span><span class="p">]]</span><span class="w">  </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">self</span><span class="w"> </span><span class="k">match</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">m</span><span class="p">.</span><span class="n">pure</span><span class="p">(</span><span class="kc">null</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">v</span><span class="p">).</span><span class="n">map</span><span class="p">(</span><span class="nc">OrNull</span><span class="p">(</span><span class="n">_</span><span class="p">))</span><span class="w"></span>
+
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
 </section>
 <section id="special-semantics-for-substitutions-in-call-chains">
 <span id="substitutions-in-call-chains"></span><h3>Special semantics for substitutions in call chains<a class="headerlink" href="#special-semantics-for-substitutions-in-call-chains" title="Permalink to this heading">¶</a></h3>
@@ -269,6 +292,7 @@ This stared as a work of Olena Kravchenko in Google Summer of Code 2023 project.
 <li><a class="reference internal" href="#how-to-provide-shifted-functions">How to provide shifted functions.</a><ul>
 <li><a class="reference internal" href="#functional-interface">Functional interface.</a></li>
 <li><a class="reference internal" href="#object-oriented-interface">Object-oriented interface.</a></li>
+<li><a class="reference internal" href="#extension-interface">Extension interface.</a></li>
 <li><a class="reference internal" href="#special-semantics-for-substitutions-in-call-chains">Special semantics for substitutions in call chains</a></li>
 <li><a class="reference internal" href="#builder-methods">Builder methods.</a></li>
 <li><a class="reference internal" href="#async-high-order-functional-interfaces">Async high-order functional interfaces</a></li>
@@ -323,7 +347,7 @@ This stared as a work of Olena Kravchenko in Google Summer of Code 2023 project.
         <li class="right" >
           <a href="BasicUsage.html" title="Dependency"
              >previous</a> |</li>
-        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.0.2 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.0.3 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">High-order functions.</a></li> 
       </ul>
     </div>

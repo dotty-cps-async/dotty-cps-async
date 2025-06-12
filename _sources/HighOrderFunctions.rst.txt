@@ -136,10 +136,43 @@ Example:
 
 
 As we have seen, shifted functions have an additional type parameter: ``F[_]`` and a parameter |CpsMonad[F]|_ (or a more specific type, if needed).  Async transformer will substitute the call of ``modify`` into ``modify_async`` during compilation.
-   Sometimes, we already have ``F[_]`` as the type parameter of the enclosing class. In such a case, we can omit those additional parameters in the async variant.
+Sometimes, we already have ``F[_]`` as the type parameter of the enclosing class. In such a case, we can omit those additional parameters in the async variant.
 
 Note that you should carefully decide whether you need async function support and how to deal with concurrent modifications.  For example, in the code snippet below, different changes will interleave with each other.
- Usually, low-level constructs do not need async counterparts.
+Usually, low-level constructs do not need async counterparts.
+
+Extension interface.
+^^^^^^^^^^^^^^^^^^^^^
+
+Also, you can shift extension methods like the object interface: a shifted extension method should be an extension of the same type, and as in
+the previous case, you can supply an external type parameter and argument list in the method definition.
+
+
+Example:
+
+.. code-block:: scala
+
+ opaque type OrNull[T] = T | Null
+
+ object OrNull:
+
+   extenstion (self: OrNull[T]) {
+
+     def map[S](f: T => S): OrNull[S] =
+       self match
+         case null => null
+         case v => f(v)
+
+     def map_async[F[_],S](m: CpsMonad[F])(f: T => F[S]): F[OrNull[S]]  =
+       self match
+         case null => m.pure(null)
+         case v => f(v).map(OrNull(_))
+
+   }
+
+
+
+
 
 
 .. _substitutions-in-call-chains:
