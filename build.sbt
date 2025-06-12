@@ -5,7 +5,7 @@ val dottyVersion = "3.3.6"
 import scala.scalanative.build._
 
 
-ThisBuild/version := "1.0.3-SNAPSHOT"
+ThisBuild/version := "1.0.3"
 ThisBuild/versionScheme := Some("semver-spec")
 //ThisBuild/resolvers ++= Opts.resolver.sonatypeOssSnapshots
 //ThisBuild/sonatypeCredentialHost := sonatypeCentralHost
