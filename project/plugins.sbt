@@ -1,5 +1,4 @@
 addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.2.1")
-addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.12.2")
 addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "1.4.1")
 addSbtPlugin("com.typesafe.sbt" % "sbt-ghpages" % "0.6.3")
 // Sphinx is not integrated in sbt-site, we should or change Sphinx or add support to new sbt-site
