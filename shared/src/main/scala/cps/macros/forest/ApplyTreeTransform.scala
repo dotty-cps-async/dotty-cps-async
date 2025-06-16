@@ -181,8 +181,10 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         // SIP-47 or exception methods.
         //   full expression ave type: Apply(TypeApply(Apply(fun1,args1),targs), args)
         val typeArgsList = ApplyTypeArgsList(fun)
-        val paramsDescriptor = MethodParamsDescriptor(fun1)
+        val paramsDescriptor = MethodParamsDescriptor(fun)
         val argsRecords = O.buildApplyArgsRecords(paramsDescriptor, args /*, cpsCtx*/ )(owner)
+        if (cpsCtx.flags.debugLevel >= 15)
+          cpsCtx.log(s"runApply:handleFunTypeApply: after buildApplyArgsRecords: argsRecords=${argsRecords}")
         val termArgsList = ApplyTermArgsList(applyTerm, argsRecords)
         val result = runApply(applyTerm, fun1, args1, typeArgsList :: termArgsList :: tails)(owner)
         result
