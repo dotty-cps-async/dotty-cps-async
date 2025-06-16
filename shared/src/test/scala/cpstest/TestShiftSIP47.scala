@@ -9,9 +9,6 @@ import cps.monads.{*, given}
 
 import org.junit.*
 
-// will be uncomment with scala-3.7
-
-/*
 object TestSiftSIP47Scope {
 
   def method[A](using String)[B](arg1: String, arg2: String): Future[String] = {
@@ -35,4 +32,3 @@ class TestShiftSIP47 {
   }
 
 }
- */
