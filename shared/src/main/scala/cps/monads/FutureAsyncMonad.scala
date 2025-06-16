@@ -104,8 +104,18 @@ given FutureAsyncMonad(using ec: ExecutionContext): FutureAsyncMonadAPI = new Fu
 
 given fromFutureConversion[G[_], T](using ex: ExecutionContext, m: CpsAsyncMonad[G]): CpsMonadConversion[Future, G] with
 
-  def apply[T](ft: Future[T]): G[T] =
-    summon[CpsAsyncMonad[G]].adoptCallbackStyle(listener => ft.onComplete(listener))
+  def apply[T](ft: Future[T]): G[T] = {
+    // Can be optimized, but ft.onComplete sometimes is not reliable on scala-native.
+    ft.value match {
+      case None =>
+        summon[CpsAsyncMonad[G]].adoptCallbackStyle(listener => ft.onComplete(listener))
+      case Some(Success(v)) =>
+        summon[CpsAsyncMonad[G]].pure(v)
+      case Some(Failure(ex)) =>
+        summon[CpsAsyncMonad[G]].error(ex)
+    }
+
+  }
 
 given toFutureConversion[F[_], T](using ExecutionContext, CpsSchedulingMonad[F]): CpsMonadConversion[F, Future] with
 
