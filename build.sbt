@@ -4,7 +4,7 @@ val dottyVersion = "3.3.6"
 import scala.scalanative.build._
 
 
-ThisBuild/version := "1.1.1-SHAPSHOT"
+ThisBuild/version := "1.1.2"
 ThisBuild/versionScheme := Some("semver-spec")
 ThisBuild/publishTo := localStaging.value
 
