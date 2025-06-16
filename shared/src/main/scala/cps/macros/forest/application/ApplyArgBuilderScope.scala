@@ -131,8 +131,9 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
         owner: Symbol
     ): BuildApplyArgsAcc = {
       if cpsCtx.flags.debugLevel >= 15 then
-        cpsCtx.log(s"termCpsTree = ${termCpsTree}")
-        cpsCtx.log(s"termCpsTree.isAsync = ${termCpsTree.isAsync}")
+        cpsCtx.log(s"buildCpsTreeApplyArgRecord: termCpsTree = ${termCpsTree}")
+        cpsCtx.log(s"buildCpsTreeApplyArgRecord: t = ${t.show}")
+        cpsCtx.log(s"acc = ${acc}")
 
       if (paramsDescriptor.isByName(acc.paramIndex)) acc.advance(ApplyArgByNameRecord(t, acc.posIndex, termCpsTree, None, None))
       else if (!termCpsTree.isAsync && termIsNoOrderDepended(t)) then
