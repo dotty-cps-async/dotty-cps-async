@@ -16,7 +16,7 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
     fa.flatMap(f)
 
   override def error[A](e: Throwable): LazyList[A] = {
-    throw e
+    LazyList.cons(throw e, LazyList.empty[A])
   }
 
   override def mapTry[A, B](fa: LazyList[A])(f: Try[A] => B): LazyList[B] = {
@@ -97,9 +97,7 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
     }
   }
 
-
   override def toLazyList[T](m: LazyList[T]): LazyList[T] = m
-  
 
 }
 

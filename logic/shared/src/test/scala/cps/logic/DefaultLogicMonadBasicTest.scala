@@ -92,8 +92,9 @@ class DefaultLogicMonadBasicTest {
     assert(m2r.nonEmpty)
     assert(m2r.head == None)
     assert(m2r.tail.isEmpty)
-
   }
+  
+  
 
 }
 

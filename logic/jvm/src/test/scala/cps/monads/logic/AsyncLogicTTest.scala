@@ -25,6 +25,10 @@ class AsyncLogicTTest {
     assert(r.contains("success: http://example.org"))
   }
 
+  @Test
+  def testObserverConversion(): Unit = {
+    
+  }
 
 }
 

@@ -67,6 +67,12 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     */
   def flattenObserver[A](fma: Observer[M[A]]): M[A]
 
+  /** Move Observer[A] into M[A].
+    */
+  def fromObserver[A](fa: Observer[A]): M[A] = {
+    flattenObserver(observerCpsMonad.map(fa)(a => pure(a)))
+  }
+
   /** Can be viewed as `fair Or` -- values from both computations are interleaved
     */
   def interleave[A](a: M[A], b: M[A]): M[A] = {
@@ -137,9 +143,8 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     }
 
   def mFoldLeftWhileObserveM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
-    op: (Observer[B], Observer[A]) => Observer[B]
+      op: (Observer[B], Observer[A]) => Observer[B]
   ): Observer[B]
-
 
   @deprecated("use mFoldLeftWhileObserve", "1.0.0")
   def mFoldLeftWhileM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
@@ -147,7 +152,6 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
   ): Observer[B] = {
     mFoldLeftWhileObserveM(ma, zero, p)(op)
   }
-
 
   def mFoldLeftWhileObserve[A, B](ma: M[A], zero: B, p: B => Boolean)(op: (B, A) => B): Observer[B] = {
     mFoldLeftWhileObserveM(ma, observerCpsMonad.pure(zero), p) { (bObs, aObs) =>
@@ -159,14 +163,14 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     }
   }
 
-  def mFoldM[A,S](ma: M[A], s0: S)(op: (S,A) => M[S]): M[S] =
-    flatMap(msplit(ma)){
+  def mFoldM[A, S](ma: M[A], s0: S)(op: (S, A) => M[S]): M[S] =
+    flatMap(msplit(ma)) {
       case None => pure(s0)
       case Some((ta, sa)) =>
         ta match
           case Success(a) =>
-            flatMap(op(s0,a)){ s1 =>
-              mFoldM(sa,s1)(op)
+            flatMap(op(s0, a)) { s1 =>
+              mFoldM(sa, s1)(op)
             }
           case Failure(ex) =>
             error(ex)
@@ -182,7 +186,6 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     fromIt(collect.iterator)
   }
 
-
 }
 
 object CpsLogicMonad {
@@ -192,32 +195,37 @@ object CpsLogicMonad {
 
   }
 
-
-
-  def unfoldM[M[_],S,A](using m:CpsLogicMonad[M])(s0: S)(f: S => M[(A, S)]): M[A] = {
+  def unfoldM[M[_], S, A](using m: CpsLogicMonad[M])(s0: S)(f: S => M[(A, S)]): M[A] = {
     def loop(s: S): M[A] = {
-      m.flatMap(f(s)){
-        case (a, s1) =>
-          m.mplus(m.pure(a), loop(s1))
+      m.flatMap(f(s)) { case (a, s1) =>
+        m.mplus(m.pure(a), loop(s1))
       }
     }
     loop(s0)
   }
 
-  def unfoldObserver[M[_],S,A](using m:CpsLogicMonad[M])(s0: S)(f: S => m.Observer[Option[(A, S)]]): M[A] = {
+  def unfoldObserver[M[_], S, A](using m: CpsLogicMonad[M])(s0: S)(f: S => m.Observer[Option[(A, S)]]): M[A] = {
 
     def loop(s: S): M[A] = {
       m.flattenObserver(
         m.observerCpsMonad.map(f(s)) {
           case Some((a, s1)) => m.pure(a) || loop(s1)
-          case None => m.mzero
+          case None          => m.mzero
         }
       )
     }
 
     loop(s0)
   }
-  
+
+  given observerConversion[M[+_], F[_]](using CpsLogicMonad.Aux[M, F], CpsMonad[F]): CpsMonadConversion[F, M] = {
+    new CpsMonadConversion[F, M] {
+      override def apply[T](ft: F[T]): M[T] = {
+        summon[CpsLogicMonad.Aux[M, F]].fromObserver(ft)
+      }
+    }
+  }
+
 }
 
 trait CpsLogicMonadContext[M[_]] extends CpsTryMonadContext[M] {
@@ -365,18 +373,15 @@ extension [M[_], A](ma: M[A])(using m: CpsLogicMonad[M])
   def otherwise(thenp: => M[A]): M[A] =
     m.ifte(ma, (a: A) => m.pure(a), thenp)
 
-
-  def foldWhile[S](s0:S)(p: S=>Boolean)(op: (S,A)=> S): m.Observer[S]= {
-    m.mFoldLeftWhileObserveM(ma,m.observerCpsMonad.pure(s0),p){ (os, oa) =>
-      m.observerCpsMonad.flatMap(os){ s =>
-        m.observerCpsMonad.map(oa){ a =>
-          op(s,a)
+  def foldWhile[S](s0: S)(p: S => Boolean)(op: (S, A) => S): m.Observer[S] = {
+    m.mFoldLeftWhileObserveM(ma, m.observerCpsMonad.pure(s0), p) { (os, oa) =>
+      m.observerCpsMonad.flatMap(os) { s =>
+        m.observerCpsMonad.map(oa) { a =>
+          op(s, a)
         }
       }
     }
   }
-
-
 
 /** Should be used inside of reify block over CpsLogicMonad.
   * The next sequent code will be executed only if <code> p </code> is true,
