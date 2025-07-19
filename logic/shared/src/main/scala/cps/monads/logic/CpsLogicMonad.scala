@@ -218,7 +218,7 @@ object CpsLogicMonad {
     loop(s0)
   }
 
-  given observerConversion[M[+_], F[_]](using CpsLogicMonad.Aux[M, F], CpsMonad[F]): CpsMonadConversion[F, M] = {
+  given observerConversion[M[+_], F[_]](using CpsLogicMonad.Aux[M, F]): CpsMonadConversion[F, M] = {
     new CpsMonadConversion[F, M] {
       override def apply[T](ft: F[T]): M[T] = {
         summon[CpsLogicMonad.Aux[M, F]].fromObserver(ft)
