@@ -42,13 +42,13 @@ for sbt:
  .. code-block:: scala
 
   autoCompilerPlugins := true
-  addCompilerPlugin("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.1.2")
+  addCompilerPlugin(("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.1.2").cross(CrossVersion.full))
 
 for mill:
 
  .. code-block:: scala
 
-  def scalacPluginIvyDeps = Agg(ivy"io.github.dotty-cps-async::dotty-cps-async-compiler-plugin:1.1.2")
+  def scalacPluginIvyDeps = Agg(ivy"io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.1.2")
 
 Loom support on JVM
 -------------------
@@ -154,7 +154,7 @@ This minimal example is for |Future|_ monad and depends on library |dotty-cps-as
  .. code-block:: scala
 
   // https://mvnrepository.com/artifact/com.github.rssh/dotty-cps-async
-  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.0.3"
+  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.1.2"
 
 From '0.9.22' we can use `await` as extension method:
 
