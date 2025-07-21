@@ -135,6 +135,7 @@ lazy val compilerPlugin = project.in(file("compiler-plugin"))
                                   ("org.scala-js" %% "scalajs-linker" % "1.19.0").cross(CrossVersion.for3Use2_13) % "test",
                                   ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test",
                               ),
+                              crossVersion := CrossVersion.full,
                               // TODO: split test into subdirectories.
                               //Test/scalacOptions ++= {
                               //   val jar = (Compile / packageBin).value
