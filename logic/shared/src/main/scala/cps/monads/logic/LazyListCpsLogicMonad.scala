@@ -4,8 +4,8 @@ import scala.collection.LazyZip2
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMonadInstanceContext[LazyList] {
-
+trait LazyListCpsLogicMonadBase extends CpsSyncLogicMonad[LazyList] {
+  
   def pure[T](t: T): LazyList[T] =
     LazyList(t)
 
@@ -70,20 +70,26 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
   override def mObserveOne[A](ma: LazyList[A]): Option[A] =
     ma.headOption
 
-  @tailrec
   override def mFoldLeftWhileObserveM[A, B](ma: LazyList[A], zero: B, p: B => Boolean)(op: (B, A) => B): B = {
-    if (ma.isEmpty) {
-      zero
-    } else {
-      val head = ma.head
-      val tail = ma.tail
-      val newZero = op(zero, head)
-      if (p(newZero)) {
-        mFoldLeftWhileObserveM(tail, newZero, p)(op)
+
+    @tailrec
+    def go(ma: LazyList[A], zero: B): B = {
+      if (ma.isEmpty) {
+        zero
       } else {
-        newZero
+        val head = ma.head
+        val tail = ma.tail
+        val newZero = op(zero, head)
+        if (p(newZero)) {
+          go(tail, newZero)
+        } else {
+          newZero
+        }
       }
     }
+
+    go(ma, zero)
+
   }
 
   override def mFoldM[S, A](ma: LazyList[A], s0: S)(op: (S, A) => LazyList[S]): LazyList[S] = {
@@ -97,8 +103,10 @@ object LazyListCpsLogicMonad extends CpsSyncLogicMonad[LazyList] with CpsLogicMo
     }
   }
 
-  override def toLazyList[T](m: LazyList[T]): LazyList[T] = m
+  override final def toLazyList[T](m: LazyList[T]): LazyList[T] = m
 
 }
+
+object LazyListCpsLogicMonad extends LazyListCpsLogicMonadBase with CpsLogicMonadInstanceContext[LazyList]
 
 given lazyListLogicMonad: CpsSyncLogicMonad[LazyList] = LazyListCpsLogicMonad

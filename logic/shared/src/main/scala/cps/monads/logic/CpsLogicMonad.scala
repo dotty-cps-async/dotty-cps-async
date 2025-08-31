@@ -135,7 +135,11 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     }
   }
 
-  def mObserveOne[A](ma: M[A]): Observer[Option[A]]
+  def mObserveOne[A](ma: M[A]): Observer[Option[A]] =
+    observerCpsMonad.map(fsplit(ma)) {
+      case None          => None
+      case Some((ta, _)) => ta.toOption
+    }
 
   def mObserveN[A](ma: M[A], n: Int): Observer[IndexedSeq[A]] =
     mFoldLeftWhileObserve(ma, IndexedSeq.empty[A], (seq: IndexedSeq[A]) => seq.size < n) { (seq, a) =>
@@ -144,7 +148,38 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
 
   def mFoldLeftWhileObserveM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
       op: (Observer[B], Observer[A]) => Observer[B]
-  ): Observer[B]
+  ): Observer[B] = {
+
+    observerCpsMonad.flatMap(zero) { z =>
+      if (p(z)) then
+        observerCpsMonad.flatMap(fsplit(ma)) {
+          case None => observerCpsMonad.pure(z)
+          case Some((head, rest)) =>
+            head match
+              case Failure(ex) => observerCpsMonad.error(ex)
+              case Success(a) =>
+                val nextZero = op(observerCpsMonad.pure(z), observerCpsMonad.pure(a))
+                mFoldLeftWhileObserveM(rest, nextZero, p)(op)
+        }
+      else observerCpsMonad.pure(z)
+    }
+
+    def loop(zeroObs: Observer[B], rest: M[A]): Observer[B] = {
+      observerCpsMonad.flatMap(zeroObs) { z =>
+        if (p(z)) {
+          observerCpsMonad.flatMap(fsplit(rest)) {
+            case None => observerCpsMonad.pure(z)
+            case Some((ta, sa)) =>
+              val nextZero = op(observerCpsMonad.pure(z), observerCpsMonad.pure(ta.get))
+              loop(nextZero, sa)
+          }
+        } else {
+          observerCpsMonad.pure(z)
+        }
+      }
+    }
+    loop(zero, ma)
+  }
 
   @deprecated("use mFoldLeftWhileObserve", "1.0.0")
   def mFoldLeftWhileM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
