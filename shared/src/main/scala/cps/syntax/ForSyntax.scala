@@ -5,7 +5,7 @@
  */
 package cps.syntax
 
-import cps._
+import cps.*
 
 /** allows to use for syntax on generic monad-wrapped values.
   */
