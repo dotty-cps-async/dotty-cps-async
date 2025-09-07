@@ -1,10 +1,9 @@
-package cps.monads.experimental
+package cps.monads
 
 import cps.*
 
 import scala.reflect.ClassTag
-import scala.util.NotGiven
-import scala.util.{Failure, Success}
+import scala.util.{Failure, NotGiven, Success}
 
 trait ThrowableMapping[E] {
 
