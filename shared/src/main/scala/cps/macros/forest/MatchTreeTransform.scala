@@ -49,10 +49,8 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       else
         val nTree = Match.copy(matchTerm)(scrutinee, nCases)
         CpsTree.impure(owner, nTree, otpe)
-    else if (!asyncCases)
-      cpsScrutinee.monadMap(x => Match.copy(matchTerm)(x, nCases), otpe)
-    else
-      cpsScrutinee.monadFlatMap(x => Match.copy(matchTerm)(x, nCases), otpe)
+    else if (!asyncCases) then cpsScrutinee.monadMap(x => Match.copy(matchTerm)(x, nCases), otpe)
+    else cpsScrutinee.monadFlatMap(x => Match.copy(matchTerm)(x, nCases), otpe)
 
 object MatchTreeTransform:
 

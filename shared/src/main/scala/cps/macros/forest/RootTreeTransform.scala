@@ -148,8 +148,10 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
               case _ =>
                 throw MacroError("Can't determinate exact type for term", expr)
     }
-    if (cpsCtx.flags.debugLevel >= 15)
+    if (cpsCtx.flags.debugLevel >= 15) {
+      cpsCtx.log(s"runRoot.otpe = ${r.otpe.show}")
       cpsCtx.log(s"runRoot result: $r")
+    }
     r
 
   def runRootUneta(term: qctx.reflect.Term, muted: Boolean)(owner: Symbol): CpsTree = {

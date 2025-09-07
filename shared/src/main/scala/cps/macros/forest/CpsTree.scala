@@ -44,7 +44,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       SelectTypeApplyCpsTree(Some(orig), this, targs, List.empty, ntpe)
 
     def select(orig: Term, symbol: Symbol, ntpe: TypeRepr): CpsTree =
-      SelectTypeApplyCpsTree(Some(orig), this, List.empty, List(SelectTypeApplyRecord(otpe, symbol, List.empty)), ntpe)
+      SelectTypeApplyCpsTree(Some(orig), this, List.empty, List(SelectTypeApplyRecord(otpe, symbol, List.empty)), ntpe.widen)
 
     def monadMap(f: Term => Term, ntpe: TypeRepr): CpsTree
 
@@ -289,8 +289,9 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def isLambda = false
 
-    def transformed: Term =
+    def transformed: Term = {
       origin
+    }
 
     def castOtpe(newOtpe: TypeRepr): CpsTree =
       if (otpe =:= newOtpe) then this
@@ -693,8 +694,9 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       }
     }
 
-    override def monadMap(f: Term => Term, ntpe: TypeRepr): CpsTree =
+    override def monadMap(f: Term => Term, ntpe: TypeRepr): CpsTree = {
       AppendCpsTree(frs, snd.monadMap(f, ntpe))
+    }
 
     override def monadFlatMap(f: Term => Term, ntpe: TypeRepr): CpsTree =
       AppendCpsTree(frs, snd.monadFlatMap(f, ntpe))

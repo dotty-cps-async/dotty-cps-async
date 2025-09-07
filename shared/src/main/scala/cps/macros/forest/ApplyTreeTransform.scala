@@ -253,7 +253,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           case _ =>
             if (cpsCtx.flags.debugLevel >= 15)
               cpsCtx.log(s"funSelect: ! lambda || Subst, fun=$fun fun.tpe=${fun.tpe}")
-            handleArgs1(applyTerm, fun, cpsObj.select(fun, fun.symbol, fun.tpe), args, tails)(owner)
+            handleArgs1(applyTerm, fun, cpsObj.select(fun, fun.symbol, fun.tpe.widen), args, tails)(owner)
 
   def withInlineBindings(owner: Symbol, origin: Inlined, tree: CpsTree): CpsTree =
     if (origin.bindings.isEmpty)
@@ -400,7 +400,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                 val newApply = applyFunToUnchangedArgss(firstApply, tails)
                 optWrapCallIntoCpsDirect(applyTerm, argsProperties.cpsDirectArg, newApply, true)(owner)
             case _ =>
-              cpsFun.monadMap(x => applyFunToUnchangedArgss(x.appliedToArgs(args), tails), applyTerm.tpe)
+              cpsFun.monadMap(x => applyFunToUnchangedArgss(x.appliedToArgs(args), tails), applyTerm.tpe.widen)
     } else {
       val retval = cpsFun match {
         case lt: AsyncLambdaCpsTree =>
@@ -1217,7 +1217,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                       applyTpe
                     )
                   case None =>
-                    cpsFun.monadMap({ x => applyFunToIdentArgss(x.appliedToArgs(args), tails, withAsync) }, applyTpe)
+                    cpsFun.monadMap({ x => applyFunToIdentArgss(x.appliedToArgs(args), tails, withAsync) }, applyTpe.widen)
       if (cpsCtx.flags.debugLevel >= 15) {
         cpsCtx.log(s"buildApply: retval = $retval")
       }
