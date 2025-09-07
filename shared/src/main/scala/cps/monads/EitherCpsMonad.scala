@@ -102,3 +102,9 @@ class EitherCpsMonad[E](using ev: NotGiven[ThrowableMapping[E]])
   override def error[A](e: Throwable): Either[E, A] = throw e
 
 }
+
+given leftEitherCpsMonadConversion[E1 <: E2, E2]: CpsMonadConversion[[A] =>> Either[E1, A], [A] =>> Either[E2, A]] with
+  override def apply[T](ft: Either[E1, T]): Either[E2, T] = ft match {
+    case Left(e)  => Left(e)
+    case Right(a) => Right(a)
+  }
