@@ -77,7 +77,13 @@ class EitherCpsTryMonad[E: ThrowableMapping]
 
 }
 
-class EitherCpsMonad[E](ev: NotGiven[ThrowableMapping[E]])
+given eitherTryCpsMonad[E: ThrowableMapping]: CpsTryMonad[[A] =>> Either[E, A]] =
+  new EitherCpsTryMonad[E]
+
+given eitherPureCpsMonad[E](using NotGiven[ThrowableMapping[E]]): CpsThrowMonad[[A] =>> Either[E, A]] =
+  new EitherCpsMonad[E]
+
+class EitherCpsMonad[E](using ev: NotGiven[ThrowableMapping[E]])
     extends CpsThrowMonad[[A] =>> Either[E, A]]
     with CpsThrowMonadInstanceContext[[A] =>> Either[E, A]] {
 
