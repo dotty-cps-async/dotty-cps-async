@@ -1,6 +1,6 @@
 package cps.pe
 
-import org.junit.{Test,Ignore}
+import org.junit.{Test, Ignore}
 import cps.*
 
 import cps.util.FutureCompleter
@@ -10,13 +10,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 class TestPEAsyncFinalizer {
 
-
-
-
   @Test
   def testLinearAsyncFinalizer() = {
 
-    given cps.macros.flags.PrintCode.type = cps.macros.flags.PrintCode
+    // given cps.macros.flags.PrintCode.type = cps.macros.flags.PrintCode
 
     @volatile var x = 0
     @volatile var y = 0
@@ -30,10 +27,8 @@ class TestPEAsyncFinalizer {
       } finally {
         nFinalizerCalls = nFinalizerCalls + 1
         y = await(PureEffect.delay(2))
-        if (x == 2) then
-          x = 3
-        else
-          x = 1
+        if (x == 2) then x = 3
+        else x = 1
       }
     }
 
@@ -48,6 +43,5 @@ class TestPEAsyncFinalizer {
     FutureCompleter(future)
 
   }
-
 
 }

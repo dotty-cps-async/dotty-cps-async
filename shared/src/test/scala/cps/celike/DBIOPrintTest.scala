@@ -29,20 +29,24 @@ class DBIOPrintTest {
     def option: Free[ConnectionIO, T]
   }
 
+  object GeneralPracticeUsers {
+    def queryIdByEmail(email: String): QueryResult[Int] = ???
+  }
+
   case class Auth(userId: Int)
   val auth = Auth(1)
 
   object GeneralPracticeUser {}
 
   val dbIO = async[ConnectionIO] {
-    GeneralPracticeUserPermission.InviteUser.check(auth.userId, req.generalPracticeId).await
+    GeneralPracticeUserPermission.InviteUser.check(auth.userId, 32).await
     val invitedAt = GeneralPracticeUserInvitedAt.nowIO.await
 
     /** run here causes the exception, it's nonsense, but the compiler should say that it's not awaitable.
  *
  * https://typelevel.org/cats/api/cats/free/Free.html#run(implicitS:cats.Comonad[S]):A
  */
-    val existingUser = GeneralPracticeUsers.queryIdByEmail(req.email).option.run.await
+    val existingUser = GeneralPracticeUsers.queryIdByEmail("x@test.com").option.run.await
     val user = existingUser match {
       case Some(existingUserId) =>
         val assignedAt = GeneralPracticeUserAssignedToPracticeAt.nowIO.toConnectionIO.await
@@ -50,7 +54,7 @@ class DBIOPrintTest {
         val row = GeneralPracticesToUser.Row(req.generalPracticeId, existingUserId, role, assignedAt)
         GeneralPracticesToUser.Row.insert.toUpdate0(row).run.singleOrThrow_!.await
         val (fullName, phone) = queryGeneralPracticeUserDetails(existingUserId).unique.await
-        GeneralPracticesListUsersResponse.ActiveUser(
+        ActiveUser(
           existingUserId,
           fullName,
           phone,
