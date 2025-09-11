@@ -347,8 +347,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         } catch {
           case NonFatal(ex) =>
             throw MacroError(
-              "Can't transform context function: TastyAPI in scala-lts don't support this yet.\n" +
-                "Note, that if you can use non-lts scala version, than this case is supported in dotty-cps-async-next",
+              "Can't transform context function: TastyAPI in scala-3.3.6 don't support this yet.\n" +
+                "Note, that we will be able to handle this with scala-3.7.x",
               posExpr(term)
             )
         }
