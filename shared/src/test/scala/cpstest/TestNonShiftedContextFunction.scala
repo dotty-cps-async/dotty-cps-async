@@ -11,6 +11,7 @@ class TestNonShiftedContextFunction {
 
   case class Context(x: String)
 
+  /*
   // disabled in lts
   object O {
 
@@ -56,5 +57,7 @@ class TestNonShiftedContextFunction {
     }
     assert(c.run() == Success(6))
   }
+
+   */
 
 }
