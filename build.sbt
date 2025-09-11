@@ -1,5 +1,5 @@
 val dottyVersion = "3.3.6"
-//val dottyVersion = "3.7.1"
+//val dottyVersion = "3.7.3"
 
 import scala.scalanative.build._
 
@@ -140,7 +140,7 @@ lazy val compilerPlugin = project
       ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test"
     ),
     crossVersion := CrossVersion.full,
-    crossScalaVersions := Seq("3.3.6", "3.7.2"),
+    crossScalaVersions := Seq("3.3.6", "3.7.2", "3.7.3"),
     // TODO: split test into subdirectories.
     // Test/scalacOptions ++= {
     //   val jar = (Compile / packageBin).value

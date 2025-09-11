@@ -130,6 +130,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                     case e: MacroError =>
                       if (!e.printed) then
                         val termShowed = TransformUtil.safeShow(term)
+                        report.error(e.msg)
                         report.error(s"can't translate tree: ${termShowed}\n et=${Type.show[et]}")
                         if (cpsCtx.flags.debugLevel > 0) then e.printStackTrace()
                         throw e.copy(printed = true);
