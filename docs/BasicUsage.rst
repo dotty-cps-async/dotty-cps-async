@@ -40,13 +40,17 @@ for sbt:
  .. code-block:: scala
 
   autoCompilerPlugins := true
-  addCompilerPlugin(("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.1.4").cross(CrossVersion.full))
+  addCompilerPlugin(
+   ("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.1.4")
+          .cross(CrossVersion.full)
+  )
 
 for mill:
 
  .. code-block:: scala
 
-  def scalacPluginIvyDeps = Agg(ivy"io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.1.4")
+  def scalacPluginIvyDeps = Agg(
+        ivy"io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.1.4")
 
 Loom support on JVM
 -------------------
