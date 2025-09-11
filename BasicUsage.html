@@ -6,7 +6,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
-    <title>Dependency &#8212; dotty-cps-async 1.1.2-SNAPSHOT documentation</title>
+    <title>Dependency &#8212; dotty-cps-async 1.1.4 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/nature.css" />
     <link rel="stylesheet" type="text/css" href="_static/css/s4defs-roles.css" />
@@ -33,7 +33,7 @@
         <li class="right" >
           <a href="index.html" title="User Manual"
              accesskey="P">previous</a> |</li>
-        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.1.2-SNAPSHOT documentation</a> &#187;</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.1.4 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">Dependency</a></li> 
       </ul>
     </div>  
@@ -47,24 +47,23 @@
 <h1>Dependency<a class="headerlink" href="#dependency" title="Permalink to this heading">¶</a></h1>
 <section id="sbt-example">
 <h2>Sbt Example<a class="headerlink" href="#sbt-example" title="Permalink to this heading">¶</a></h2>
-<p>The current release is <a href="#id4"><span class="problematic" id="id5">|1.1.2|</span></a>.</p>
+<p>The current release is 1.1.4.</p>
 <p>Sbt dependency:</p>
 <blockquote>
-<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="w"></span>
+<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
 <p>JavaScript and Native targets are also supported.</p>
 <blockquote>
-<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="w"></span>
+<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
 <p><strong>Note</strong>: <span class="red">%%%</span> automatically determines whether we are in a Scala/JVM or a Scala.js or a Scala.Native project (see <a class="reference external" href="https://www.scala-js.org/doc/project/cross-build.html"><strong>Scala.js Cross-Building</strong></a>).</p>
 <p>According to the Scala versioning policy, the library can be used in projects with any Scala-3 version.</p>
-<p>A version of dotty-cps-async with extended capacities also exists, which relies on the latest version of the Scala compiler.  For this version, use the <cite>dotty-cps-async-next</cite> artifcat name.</p>
 <blockquote>
-<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-next&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="w"></span>
+<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-next&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
@@ -75,13 +74,17 @@
 <p>for sbt:</p>
 <blockquote>
 <div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">autoCompilerPlugins</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="kc">true</span><span class="w"></span>
-<span class="n">addCompilerPlugin</span><span class="p">(</span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-compiler-plugin&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="p">)</span><span class="w"></span>
+<span class="n">addCompilerPlugin</span><span class="p">(</span><span class="w"></span>
+<span class="w"> </span><span class="p">(</span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-compiler-plugin&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="p">)</span><span class="w"></span>
+<span class="w">        </span><span class="p">.</span><span class="n">cross</span><span class="p">(</span><span class="nc">CrossVersion</span><span class="p">.</span><span class="n">full</span><span class="p">)</span><span class="w"></span>
+<span class="p">)</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
 <p>for mill:</p>
 <blockquote>
-<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">scalacPluginIvyDeps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Agg</span><span class="p">(</span><span class="n">ivy</span><span class="s">&quot;io.github.dotty-cps-async::dotty-cps-async-compiler-plugin:1.1.2&quot;</span><span class="p">)</span><span class="w"></span>
+<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">scalacPluginIvyDeps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Agg</span><span class="p">(</span><span class="w"></span>
+<span class="w">      </span><span class="n">ivy</span><span class="s">&quot;io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.1.4&quot;</span><span class="p">)</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
@@ -91,12 +94,12 @@
 <p>If you use JDK-21 or later you can find helpful loom-based support for transforming arguments of high-order functions.
 To enable one, add <cite>dotty-cps-async-loom</cite> module to the dependencies:</p>
 <blockquote>
-<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-loom&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="w"></span>
+<div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-loom&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 <p>or</p>
 <div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// for next line</span>
-<span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-loom-next&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.2&quot;</span><span class="w"></span>
+<span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async-loom-next&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
@@ -168,7 +171,7 @@ For more information, please write a request to <a class="reference external" hr
 <p>This minimal example is for <a class="reference external" href="https://www.scala-lang.org/api/current/scala/concurrent/Future.html"><code class="docutils literal notranslate"><span class="pre">Future</span></code></a> monad and depends on library <a class="reference external" href="https://github.com/rssh/dotty-cps-async#dotty-cps-async"><strong>dotty-cps-async</strong></a> to be added to our project file <code class="docutils literal notranslate"><span class="pre">build.sbt</span></code> :</p>
 <blockquote>
 <div><div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// https://mvnrepository.com/artifact/com.github.rssh/dotty-cps-async</span>
-<span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.0.3&quot;</span><span class="w"></span>
+<span class="n">libraryDependencies</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="s">&quot;io.github.dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%%</span><span class="w"> </span><span class="s">&quot;dotty-cps-async&quot;</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="s">&quot;1.1.4&quot;</span><span class="w"></span>
 </pre></div>
 </div>
 </div></blockquote>
@@ -426,7 +429,7 @@ We define alternative names for macros: <cite>reify(reifed)/reflect</cite>, whic
         <li class="right" >
           <a href="index.html" title="User Manual"
              >previous</a> |</li>
-        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.1.2-SNAPSHOT documentation</a> &#187;</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.1.4 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">Dependency</a></li> 
       </ul>
     </div>
