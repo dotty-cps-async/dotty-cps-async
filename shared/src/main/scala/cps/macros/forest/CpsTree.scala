@@ -910,13 +910,13 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       changed: Boolean = false
   ) extends CpsTree:
 
-    override def isAsync = nested.isAsync
+    override def isAsync: Boolean = nested.isAsync
 
-    override def isChanged = nested.isChanged || changed
+    override def isChanged: Boolean = nested.isChanged || changed
 
-    override def isLambda = nested.isLambda
+    override def isLambda: Boolean = nested.isLambda
 
-    override def owner = nested.owner
+    override def owner: Symbol = nested.owner
 
     override def inCake[F1[_], T1, C1 <: CpsMonadContext[F1]](
         otherCake: TreeTransformScope[F1, T1, C1]

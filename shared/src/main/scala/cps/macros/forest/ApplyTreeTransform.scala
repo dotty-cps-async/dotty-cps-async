@@ -610,16 +610,16 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       buildApply(cpsFun, fun, argsRecords, applyTerm, argsProperties, unpure, tails)(owner)
     }
 
+    // the work of runFold is to builf m.flatMap(arg1)(sa1 => m.flatMap(arg2)(sa2 => f(s1)(s2)) ...  for all arggument lists
     val retval = if (runFold) {
       (ApplyTermArgsList(applyTerm, argsRecords) :: tails).foldRight(lastCpsTree) { (pa, sa) =>
         pa match
           case ApplyTermArgsList(originApply, args) =>
             args.foldRight(sa) { (p, s) =>
-              if (p.usePrepend(argsProperties.hasAsync)) then p.append(s)
-              else s
+              if (p.usePrepend(argsProperties.hasAsync)) then p.append(s) else s
             }
           case ApplyTypeArgsList(originTypeApply) =>
-            sa.typeApply(originTypeApply, originTypeApply.args, sa.otpe.appliedTo(originTypeApply.args.map(_.tpe.widen)))
+            sa
       }
     } else lastCpsTree
 
