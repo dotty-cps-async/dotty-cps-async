@@ -5,7 +5,7 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 trait LazyListCpsLogicMonadBase extends CpsSyncLogicMonad[LazyList] {
-  
+
   def pure[T](t: T): LazyList[T] =
     LazyList(t)
 

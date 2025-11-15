@@ -271,9 +271,8 @@ object LogicStreamT {
     def apply[T](ft: F[T]): LogicStreamT[F, T] =
       LogicStreamT.WaitF(summon[CpsTryMonad[F]].map(ft)(LogicStreamT.mpure(_)))
 
-  def fromCollection[F[_]:CpsTryMonad,A](s: Iterable[A]): LogicStreamT[F,A] =
-    s.foldLeft(empty[F,A])((s, a) => s.mplus(pure(a)))
-
+  def fromCollection[F[_]: CpsTryMonad, A](s: Iterable[A]): LogicStreamT[F, A] =
+    s.foldLeft(empty[F, A])((s, a) => s.mplus(pure(a)))
 
 }
 
@@ -330,7 +329,11 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
     }
   }
 
-  override def mFoldLeftWhileObserveM[A, B](ma: LogicStreamT[F, A], zeroM: F[B], p: B => Boolean)(op: (F[B], F[A]) => F[B]): F[B] = {
+  override def mFoldLeftWhileObserveM[A, B](
+      ma: LogicStreamT[F, A],
+      zeroM: F[B],
+      p: B => Boolean
+  )(op: (F[B], F[A]) => F[B]): F[B] = {
     observerCpsMonad.flatMap(zeroM) { zero =>
       if (p(zero)) then
         observerCpsMonad.flatMap(ma.fsplit) {
@@ -347,7 +350,6 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
       else observerCpsMonad.pure(zero)
     }
   }
-
 
 }
 
