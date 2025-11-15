@@ -285,7 +285,7 @@ class PoorManEffectRuntimeAwait(rt: PoorManEffect.RunAPI) extends CpsRuntimeAwai
           case ex: TimeoutException =>
             if (!rt.isActive) {
               rt.activate()
-            } 
+            }
         finally rt.forgetSubmitted(id)
       }
       retval.asInstanceOf[A]
