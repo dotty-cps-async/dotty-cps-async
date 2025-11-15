@@ -12,7 +12,7 @@ Dependency
 
  .. code-block:: scala
 
-   libraryDependencies += "com.github.rssh" %%% "dotty-cps-async-logic" % "<version>"
+   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async-logic" % "<version>"
 
 Basic Usage
 -----------

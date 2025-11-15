@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Changelog &#8212; dotty-cps-async 1.1.5 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/nature.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/s4defs-roles.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">dotty-cps-async 1.1.5 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Changelog</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="changelog">
+<h1>Changelog<a class="headerlink" href="#changelog" title="Permalink to this heading">¶</a></h1>
+<section id="id1">
+<h2>1.1.5 (2025-11-15)<a class="headerlink" href="#id1" title="Permalink to this heading">¶</a></h2>
+<section id="features">
+<h3>Features<a class="headerlink" href="#features" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Added cross-compilation of compiler plugin to Scala 3.7.4 (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/0790808259d9bfd62d3800f18647699275bcdc9e">0790808</a>)</p></li>
+</ul>
+</section>
+<section id="bug-fixes">
+<h3>Bug Fixes<a class="headerlink" href="#bug-fixes" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Attempt to fix potential race condition in CpsTryBlockTranformer (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/115707286a2c5db663c8ffe07b04661d2ea06009">1157072</a>)</p></li>
+<li><p>Eliminated false positive match exhausive warning, by transforming sealed trait to enum (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/b459be4e63de717486fe1411ec02ec77c0a4742b">b459be4</a>)</p></li>
+<li><p>Fix for issue #112, where async macro was not processing parameters of case classes during inline expansion.  (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/e5416c3c2cc6cf4f2dfa0731a435d5a9b217247e">e5416c3</a>)</p></li>
+</ul>
+</section>
+<section id="other">
+<h3>Other<a class="headerlink" href="#other" title="Permalink to this heading">¶</a></h3>
+<ul class="simple">
+<li><p>Updated to scala-native 0.5.9 (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/4042667a881cc8888f3a81a4878e0314f3ce1b72">4042667</a>)</p></li>
+<li><p>Updated to scala 3.3.7 (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/1e9f565094ac2999e2bd18098dcc27d7c9674453">1e9f565</a>)</p></li>
+<li><p>Updated organization in logic monad artifact (<a class="reference external" href="https://github.com/rssh/dotty-cps-async/commit/faa8823b76f28894d7af325794ad7efac7f98368">faa8823</a>)</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Changelog</a><ul>
+<li><a class="reference internal" href="#id1">1.1.5 (2025-11-15)</a><ul>
+<li><a class="reference internal" href="#features">Features</a></li>
+<li><a class="reference internal" href="#bug-fixes">Bug Fixes</a></li>
+<li><a class="reference internal" href="#other">Other</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/changelogs/changelog-1.1.5.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">dotty-cps-async 1.1.5 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Changelog</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020-2025, Ruslan Shevchenko.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.2.3.
+    </div>
+  </body>
+</html>
