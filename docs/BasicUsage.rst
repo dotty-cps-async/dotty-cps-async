@@ -4,7 +4,7 @@ Dependency
 Sbt Example
 -----------
 
-The current release is 1.1.4.
+The current release is 1.1.5.  See `changelogs/changelog-1.1.5.md`_ for details.
 
 Sbt dependency:
 
@@ -438,3 +438,5 @@ Yet one pair of names 'lift/unlift', used for example in the |monadless|_ librar
 
 .. |ZIO| replace:: **ZIO**
 .. _ZIO: https://zio.dev/
+
+.. _changelogs/changelog-1.1.5.md: changelogs/changelog-1.1.5.md
