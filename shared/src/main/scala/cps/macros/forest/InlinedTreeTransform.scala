@@ -240,8 +240,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         bodyWithoutAwaits
 
     if (cpsCtx.flags.debugLevel >= 15) then
-      try
-        cpsCtx.log(s"runInline, body=${body.show}")
+      try cpsCtx.log(s"runInline, body=${body.show}")
       catch
         case NonFatal(ex) =>
           cpsCtx.log(s"runInline, body=<<exception during show>>")
