@@ -10,7 +10,7 @@ Sbt dependency:
 
  .. code-block:: scala
 
-libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.1.5"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.1.5"
 
 
 
