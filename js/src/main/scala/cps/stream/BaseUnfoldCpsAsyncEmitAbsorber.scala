@@ -21,13 +21,15 @@ trait BaseUnfoldCpsAsyncEmitAbsorber[R, F[_], C <: CpsMonadContext[F], T](using
 
   val asyncMonad: CpsConcurrentMonad.Aux[F, C] = auxAsyncMonad
 
-  sealed class SupplyEventRecord
-  case object SpawnEmitter extends SupplyEventRecord
-  case class Emitted(value: T, emitCallback: Try[Unit] => Unit) extends SupplyEventRecord
-  case class Finished(result: Try[Unit]) extends SupplyEventRecord
+  enum SupplyEventRecord:
+    case SpawnEmitter extends SupplyEventRecord
+    case Emitted(value: T, emitCallback: Try[Unit] => Unit) extends SupplyEventRecord
+    case Finished(result: Try[Unit]) extends SupplyEventRecord
 
   type ConsumerCallback = Try[SupplyEventRecord] => Unit
   type OneThreadTaskCallback = Unit => Unit
+
+  import SupplyEventRecord.*
 
   class State:
     val finishRef = new AtomicReference[Try[Unit] | Null]()
@@ -134,3 +136,5 @@ trait BaseUnfoldCpsAsyncEmitAbsorber[R, F[_], C <: CpsMonadContext[F], T](using
     unfold(state)(step)
 
   end evalAsyncInContext
+
+end BaseUnfoldCpsAsyncEmitAbsorber

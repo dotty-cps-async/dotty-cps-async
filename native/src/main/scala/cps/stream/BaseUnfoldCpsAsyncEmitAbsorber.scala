@@ -22,7 +22,8 @@ trait BaseUnfoldCpsAsyncEmitAbsorber[R, F[_], C <: CpsMonadContext[F], T](using
 
   val asyncMonad: CpsConcurrentMonad.Aux[F, C] = auxAsyncMonad
 
-  sealed class SupplyEventRecord
+  // note: transformed to enum cause compiler bug in scala-native 0.5.9
+  trait SupplyEventRecord
   case object SpawnEmitter extends SupplyEventRecord
   case class Emitted(value: T, emitCallback: Try[Unit] => Unit) extends SupplyEventRecord
   case class Finished(result: Try[Unit]) extends SupplyEventRecord
@@ -168,3 +169,5 @@ trait BaseUnfoldCpsAsyncEmitAbsorber[R, F[_], C <: CpsMonadContext[F], T](using
     unfold(state)(step)
 
   end evalAsyncInContext
+
+end BaseUnfoldCpsAsyncEmitAbsorber
