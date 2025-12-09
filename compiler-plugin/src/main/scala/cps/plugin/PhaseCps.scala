@@ -82,6 +82,7 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
           given CpsTopLevelContext = tc
           val ctx1: Context = summon[Context].withOwner(tree.symbol)
           if (debugSettings.printCode) then Log.info(s"transformDefDefIntenal: ${tree.show}", 0, tree.srcPos)
+          // Note: Preprocessing is handled in the macro (transformContextLambdaImpl) or in PhaseSelectAndGenerateShiftedMethods
           val transformedRhs = RootTransform(tree.rhs, tree.symbol, 0)(using ctx1, tc).transformed
           val nRhs = Block(monadValDef :: Nil, transformedRhs)(using ctx1)
           val adoptedRhs = Scaffolding.adoptUncpsedRhs(nRhs, tree.tpt.tpe, tc.monadType)
@@ -293,6 +294,7 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
       Log.info(s"transformDefDefInsideAsync: body: ${ddef.rhs.show}", 0, ddef.srcPos)(using ctx, tctx)
     }
     val ddefCtx = ctx.withOwner(ddef.symbol)
+    // Note: Preprocessing is already applied by the macro (inferAsyncArgApplyImpl)
     val nRhsCps = RootTransform(ddef.rhs, ddef.symbol, 0)(using ddefCtx, tctx)
     val nRhsTerm = wrapTopLevelCpsTree(nRhsCps)(using ddefCtx, tctx)
     val nRhsType = nRhsTerm.tpe.widen

@@ -55,12 +55,20 @@ object Async {
       Expr.summon[UseCompilerPlugin.type].isDefined // ||CompilationInfo.XmacroSettings.find(_ == "cps:plugin").isDefined
     // Problem: XmacroSettings still experimental
     if (usePlugin) {
+      // For the plugin path, preprocess the lambda body here since the plugin
+      // doesn't call transformContextLambdaImpl
+      val processedExpr = Expr.summon[CpsPreprocessor[F]] match
+        case Some(preprocessor) =>
+          preprocessContextLambda[F, T](expr.asTerm, preprocessor)
+        case None =>
+          expr.asTerm
+
       val retval = Apply(
         TypeApply(
           Ref(Symbol.requiredMethod("cps.plugin.cpsAsyncApply")),
           List(Inferred(TypeRepr.of[F]), Inferred(TypeRepr.of[T]), Inferred(TypeRepr.of[C]))
         ),
-        List(am.asTerm, expr.asTerm)
+        List(am.asTerm, processedExpr)
       ).asExprOf[F[T]]
       TransformUtil.findDefinitionWithoutSymbol(retval.asTerm) match
         case Some(tree) =>
@@ -178,7 +186,7 @@ object Async {
         println(s"transformed tree: ${r.asTerm}")
       r
     catch
-      case ex: MacroError =>
+      case ex:  MacroError =>
         if (flags.debugLevel > 0)
           ex.printStackTrace
         report.errorAndAbort(ex.msg, ex.posExpr)
@@ -297,6 +305,65 @@ object Async {
       Some(cpsCtx)
     )
 
+  /**
+   * Extract lambda parameters and body from a context function term.
+   * Returns (params, body, wrapper function to reconstruct the Inlined/Block structure)
+   */
+  def extractContextLambda(using q: Quotes)(f: q.reflect.Term): (List[q.reflect.ValDef], q.reflect.Term, q.reflect.Term => q.reflect.Term) =
+    import q.reflect._
+    f match
+      case Inlined(call, bindings, body) =>
+        val inner = extractContextLambda(body)
+        (inner._1, inner._2, t => Inlined(call, bindings, inner._3(t)))
+      case Lambda(params, body) =>
+        (params, body, identity)
+      case Block(Nil, nested @ Lambda(_, _)) =>
+        extractContextLambda(nested)
+      case _ =>
+        report.errorAndAbort(s"lambda expected, have: ${f}")
+
+  /**
+   * Apply CpsPreprocessor[F] to a body term.
+   * Builds: preprocessor.preprocess[T](body)
+   */
+  def applyPreprocessorToBody[F[_]: Type, T: Type](using q: Quotes)(body: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F]]): q.reflect.Term =
+    import q.reflect._
+    val preprocessorTerm = preprocessor.asTerm
+    val preprocessMethod = preprocessorTerm.tpe.typeSymbol.methodMember("preprocess").head
+    Apply(
+      TypeApply(
+        Select(preprocessorTerm, preprocessMethod),
+        List(TypeTree.of[T])
+      ),
+      List(body)
+    )
+
+  /**
+   * Preprocess the body of a context lambda (C ?=> T).
+   * Recursively rebuilds the structure to preserve lambda type (context function vs regular function).
+   */
+  def preprocessContextLambda[F[_]: Type, T: Type](using q: Quotes)(term: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F]]): q.reflect.Term =
+    import q.reflect._
+
+    def processLambda(t: Term): Term =
+      t match
+        case Inlined(call, bindings, body) =>
+          Inlined(call, bindings, processLambda(body))
+        case Block(Nil, nested) =>
+          Block(Nil, processLambda(nested))
+        case Block((defDef: DefDef) :: Nil, closure @ Closure(_, _)) =>
+          // This is the Lambda - extract body, preprocess, and rebuild
+          val params = defDef.paramss.flatMap(_.params).collect { case v: ValDef => v }
+          val body = defDef.rhs.getOrElse(report.errorAndAbort("DefDef has no body"))
+          val preprocessedBody = applyPreprocessorToBody[F, T](body, preprocessor)
+          // Copy the DefDef with the new body
+          val newDefDef = DefDef.copy(defDef)(defDef.name, defDef.paramss, defDef.returnTpt, Some(preprocessedBody))
+          Block(List(newDefDef), Closure(Ref(newDefDef.symbol), None))
+        case _ =>
+          report.errorAndAbort(s"Expected lambda structure (Block with DefDef and Closure), have: ${t.show}")
+
+    processLambda(term)
+
   def transformContextLambdaImpl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](
       cexpr: Expr[C ?=> T]
   )(using Quotes): Expr[C => F[T]] = {
@@ -307,23 +374,20 @@ object Async {
         case Inlined(call, bindings, body) => Inlined(call, bindings, f(body))
         case other                         => other
 
-    def extractLambda(f: Term): (List[ValDef], Term, Term => Term) =
-      f match
-        case Inlined(call, bindings, body) =>
-          val inner = extractLambda(body)
-          (inner._1, inner._2, t => Inlined(call, bindings, t))
-        case Lambda(params, body) =>
-          params match
-            case List(vd) => (params, body, identity)
-            case _        => report.errorAndAbort(s"lambda with one argument expected, we have ${params}", cexpr)
-        case Block(Nil, nested @ Lambda(params, body)) => extractLambda(nested)
-        case _ =>
-          report.errorAndAbort(s"lambda expected, have: ${f}", cexpr)
-
     def transformNotInlined(t: Term): Term =
-      val (oldParams, body, nestFun) = extractLambda(t)
+      val (oldParams, body, nestFun) = extractContextLambda(t)
+      if (oldParams.size != 1) then
+        report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
       val oldValDef = oldParams.head
-      val transformed = transformImpl[F, T, C](body.changeOwner(Symbol.spliceOwner).asExprOf[T], Ref(oldValDef.symbol).asExprOf[C])
+
+      // Apply preprocessing if CpsPreprocessor[F] exists
+      val preprocessedBody = Expr.summon[CpsPreprocessor[F]] match
+        case Some(preprocessor) =>
+          applyPreprocessorToBody[F, T](body, preprocessor)
+        case None =>
+          body
+
+      val transformed = transformImpl[F, T, C](preprocessedBody.changeOwner(Symbol.spliceOwner).asExprOf[T], Ref(oldValDef.symbol).asExprOf[C])
       val mt = MethodType(List(oldValDef.name))(_ => List(oldValDef.tpt.tpe), _ => TypeRepr.of[F[T]])
       val nLambda = Lambda(
         Symbol.spliceOwner,
