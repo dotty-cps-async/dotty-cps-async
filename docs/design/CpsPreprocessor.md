@@ -2,7 +2,7 @@
 
 ## Overview
 
-`CpsPreprocessor[F[_]]` is a typeclass that allows monads to transform expressions inside `async` blocks before CPS (Continuation-Passing Style) transformation occurs. This enables monad-specific AST transformations such as:
+`CpsPreprocessor[F[_], C <: CpsMonadContext[F]]` is a typeclass that allows monads to transform expressions inside `async` blocks before CPS (Continuation-Passing Style) transformation occurs. This enables monad-specific AST transformations such as:
 
 - **Durable monad**: Wrap all `val` definitions with caching calls for replay-based execution
 - **Tracing monad**: Insert trace/logging calls around expressions
@@ -13,40 +13,37 @@
 ```scala
 package cps
 
-trait CpsPreprocessor[F[_]]:
+trait CpsPreprocessor[F[_], C <: CpsMonadContext[F]]:
   /**
    * Transform the body of an async block before CPS transformation.
    *
-   * @param body The body expression inside the async block. The CpsMonadContext[F]
-   *             is available in scope, so preprocessor can access it via
-   *             `summon[CpsMonadContext[F]]`.
+   * @param body The body expression inside the async block
+   * @param ctx The monad context, passed explicitly for use in generated code
    * @tparam A The result type of the body expression
    * @return The transformed body expression
    */
-  inline def preprocess[A](inline body: A): A
+  inline def preprocess[A](inline body: A, inline ctx: C): A
 ```
 
 ## Usage
 
 ### Defining a Preprocessor
 
-A preprocessor is typically implemented as a macro that transforms the AST:
+A preprocessor is typically implemented as a macro that transforms the AST. The context is passed explicitly so the macro can directly reference it in generated code:
 
 ```scala
 import cps.*
 import scala.quoted.*
 
-given CpsPreprocessor[MyMonad] with
-  inline def preprocess[A](inline body: A): A =
-    ${ MyPreprocessorMacro.impl[A]('body) }
+given CpsPreprocessor[MyMonad, MyContext] with
+  inline def preprocess[A](inline body: A, inline ctx: MyContext): A =
+    ${ MyPreprocessorMacro.impl[A, MyContext]('body, 'ctx) }
 
 object MyPreprocessorMacro:
-  def impl[A: Type](body: Expr[A])(using Quotes): Expr[A] =
+  def impl[A: Type, C <: CpsMonadContext[MyMonad]: Type](body: Expr[A], ctx: Expr[C])(using Quotes): Expr[A] =
     import quotes.reflect.*
-    // Transform the AST
-    // The CpsMonadContext[MyMonad] is available in scope within body
-    // You can insert calls like: summon[CpsMonadContext[MyMonad]].doSomething()
-    body // Return transformed expression
+    // Transform the AST using $ctx directly
+    '{ $ctx.someOperation($body) }
 ```
 
 ### How It Works
@@ -60,11 +57,11 @@ When using `async[F] { body }`, the preprocessor is applied inside `transformCon
 ```
 async[MyMonad] { body }
        ↓
-extractLambda gets (params, body)
+extractLambda gets (params, body) where params contains ctx
        ↓
-Summon CpsPreprocessor[MyMonad]?
+Summon CpsPreprocessor[MyMonad, C]?
        ↓ Yes
-preprocessor.preprocess(body) → preprocessedBody
+preprocessor.preprocess(body)(ctx) → preprocessedBody
        ↓
 CPS transformation on preprocessedBody
 ```
@@ -74,13 +71,13 @@ CPS transformation on preprocessedBody
 For direct style functions, the preprocessor is applied in the compiler plugin's first phase (before macro inlining):
 
 ```
-def foo(using CpsDirect[MyMonad]): T = body
+def foo(using ctx: CpsDirect[MyMonad]): T = body
        ↓
 PhaseSelectAndGenerateShiftedMethods detects CpsDirect function
        ↓
-Summon CpsPreprocessor[MyMonad]?
+Summon CpsPreprocessor[MyMonad, CpsDirect[MyMonad]]?
        ↓ Yes
-Wrap: body → preprocessor.preprocess(body)
+Wrap: body → preprocessor.preprocess(body)(ctx)
        ↓
 Inlining phase expands the preprocessor macro
        ↓
@@ -112,49 +109,55 @@ async[Durable] {
 Implementation sketch:
 
 ```scala
-given CpsPreprocessor[Durable] with
-  inline def preprocess[A](inline body: A): A =
-    ${ DurablePreprocessor.impl[A]('body) }
+given CpsPreprocessor[Durable, DurableContext] with
+  inline def preprocess[A](inline body: A, inline ctx: DurableContext): A =
+    ${ DurablePreprocessor.impl[A]('body, 'ctx) }
 
 object DurablePreprocessor:
-  def impl[A: Type](body: Expr[A])(using Quotes): Expr[A] =
+  def impl[A: Type](body: Expr[A], ctx: Expr[DurableContext])(using Quotes): Expr[A] =
     import quotes.reflect.*
 
     // Walk AST and transform:
-    // 1. val x = rhs  →  val x = ctx.cached(step, idx) { rhs }
-    // 2. if (cond)    →  if (ctx.cached(step, idx) { cond })
+    // 1. val x = rhs  →  val x = $ctx.cached(step, idx) { rhs }
+    // 2. if (cond)    →  if ($ctx.cached(step, idx) { cond })
     // 3. Detect await(...) as step boundary
 
-    // Access context via: summon[CpsMonadContext[Durable]]
-    transformTree(body.asTerm).asExprOf[A]
+    transformTree(body.asTerm, ctx).asExprOf[A]
 
-  private def transformTree(tree: Term)(using Quotes): Term =
+  private def transformTree(tree: Term, ctx: Expr[DurableContext])(using Quotes): Term =
     // AST transformation logic
     ???
 ```
 
 ## Design Notes
 
-### Context Availability
+### Explicit Context Parameter
 
-Inside the preprocessed body, `CpsMonadContext[F]` is available in scope. This allows the preprocessor to insert calls that use the context:
+The monad context is passed explicitly to `preprocess` as the `ctx` parameter. This allows the preprocessor macro to directly reference the context in generated code:
 
 ```scala
-// Preprocessor can insert code like:
-val ctx = summon[CpsMonadContext[Durable]]
-ctx.cached(stepIndex, valIndex) { originalExpression }
+// Preprocessor can generate code like:
+'{ $ctx.cached(stepIndex, valIndex) { $originalExpression } }
 ```
+
+### Type Parameters
+
+The preprocessor has two type parameters:
+- `F[_]` - The monad type (e.g., `Future`, `IO`, `Durable`)
+- `C <: CpsMonadContext[F]` - The context type (e.g., `CpsDirect[Future]`, `DurableContext`)
+
+This allows different preprocessors for different context types of the same monad, enabling context-specific transformations. For example, a `DurableContext` might have a `cached` method that a generic `CpsMonadContext[Durable]` doesn't have.
 
 ### Macro vs Plugin
 
 The preprocessor uses an `inline def` with a macro implementation. This works for both paths:
 
 - **Macro path**: The preprocessor macro is expanded during macro expansion
-- **Plugin path**: The plugin wraps the body with `preprocessor.preprocess(body)`, and the inline macro is expanded during the Inlining compiler phase (before CPS transformation in PhaseCps)
+- **Plugin path**: The plugin wraps the body with `preprocessor.preprocess(body)(ctx)`, and the inline macro is expanded during the Inlining compiler phase (before CPS transformation in PhaseCps)
 
 ### No Preprocessor Case
 
-If no `CpsPreprocessor[F]` is defined for a monad, the body passes through unchanged to CPS transformation. This is the default behavior for most monads.
+If no `CpsPreprocessor[F, C]` is defined for a monad and context type, the body passes through unchanged to CPS transformation. This is the default behavior for most monads.
 
 ## Related
 

@@ -9,9 +9,9 @@ package cps
  * Typeclass for preprocessing expressions inside async blocks
  * before CPS transformation occurs.
  *
- * The preprocessor receives the body expression where the CpsMonadContext[F]
- * is available in scope. This allows inserting operations that use the context,
- * such as ctx.monad for accessing the monad instance.
+ * The preprocessor receives the body expression and the monad context.
+ * The context is passed explicitly because the body has type A (not a context function),
+ * so the context cannot be summoned inside the body.
  *
  * Use cases:
  * - Durable monad: wrap vals with caching via ctx operations
@@ -20,23 +20,24 @@ package cps
  *
  * Example implementation:
  * {{{
- * given CpsPreprocessor[Durable] with
- *   inline def preprocess[A](inline body: A): A =
- *     \${ DurablePreprocessMacro.impl[A]('body) }
+ * given CpsPreprocessor[Durable, DurableContext] with
+ *   inline def preprocess[A](inline body: A)(inline ctx: DurableContext): A =
+ *     \${ DurablePreprocessMacro.impl[A]('body, 'ctx) }
  * }}}
  *
  * The preprocessor macro can transform val definitions, control flow conditions,
- * and other expressions as needed by the monad semantics.
+ * and other expressions as needed by the monad semantics, using ctx directly.
+ *
+ * @tparam F The monad type
+ * @tparam C The context type (subtype of CpsMonadContext[F])
  */
-trait CpsPreprocessor[F[_]]:
+trait CpsPreprocessor[F[_], C <: CpsMonadContext[F]]:
   /**
    * Transform the body of an async block before CPS transformation.
    *
-   * @param body The body expression inside the async block. The CpsMonadContext[F]
-   *             is available in scope within this body, so preprocessor can insert
-   *             calls like `summon[CpsMonadContext[F]].cached(...)` or access the
-   *             monad via `summon[CpsMonadContext[F]].monad`.
+   * @param body The body expression inside the async block
+   * @param ctx The monad context, passed explicitly for use in generated code
    * @tparam A The result type of the body expression
    * @return The transformed body expression
    */
-  inline def preprocess[A](inline body: A): A
+  inline def preprocess[A](inline body: A, inline ctx: C): A

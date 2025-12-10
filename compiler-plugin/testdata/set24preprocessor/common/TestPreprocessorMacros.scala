@@ -1,5 +1,6 @@
 package cps.preprocessor
 
+import scala.concurrent.Future
 import scala.quoted._
 import cps._
 
@@ -11,8 +12,9 @@ object TestPreprocessorMacros:
 
   /**
    * Preprocessor macro that marks tracking flag and returns body unchanged.
+   * The ctx parameter is available but not used in this simple test.
    */
-  def trackingImpl[A: Type](body: Expr[A])(using Quotes): Expr[A] =
+  def trackingImpl[A: Type, C: Type](body: Expr[A], ctx: Expr[C])(using Quotes): Expr[A] =
     import quotes.reflect.*
     '{
       PreprocessorTracker.markCalled()
@@ -21,7 +23,8 @@ object TestPreprocessorMacros:
 
   /**
    * Preprocessor macro that wraps body with counter.
+   * The ctx parameter is available but not used in this simple test.
    */
-  def wrappingImpl[A: Type](body: Expr[A])(using Quotes): Expr[A] =
+  def wrappingImpl[A: Type, C: Type](body: Expr[A], ctx: Expr[C])(using Quotes): Expr[A] =
     import quotes.reflect.*
     '{ PreprocessorTracker.wrap($body) }

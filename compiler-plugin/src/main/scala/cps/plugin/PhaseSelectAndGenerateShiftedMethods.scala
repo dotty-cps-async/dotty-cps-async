@@ -106,19 +106,21 @@ class PhaseSelectAndGenerateShiftedMethods(selectedNodes: SelectedNodes) extends
             dd.symbol.addAnnotation(ConcreteAnnotation(initAnnotExpr))
             selectedNodes.addDefDef(dd.symbol, kind)
 
-            // Apply preprocessing if CpsPreprocessor[F] exists.
+            // Apply preprocessing if CpsPreprocessor[F, C] exists.
             // This must happen here (before Inlining phase) so the inline macro gets expanded.
             if (dd.rhs.isEmpty) then
               dd
             else
-              CpsTransformHelper.findCpsPreprocessor(monadType, dd.rhs.span) match
+              val contextType = kind.getCpsDirectContext.tpe
+              val ctxRef = ref(kind.getCpsDirectContext.symbol)
+              CpsTransformHelper.findCpsPreprocessor(monadType, contextType, dd.rhs.span) match
                 case Some(preprocessor) =>
-                  // Wrap: body → preprocessor.preprocess(body)
+                  // Wrap: body → preprocessor.preprocess(body, ctx)
                   // The inline macro will be expanded during Inlining phase
                   val preprocessMethod = Select(preprocessor, "preprocess".toTermName)
                   val preprocessedRhs = Apply(
                     TypeApply(preprocessMethod, List(TypeTree(dd.rhs.tpe.widen))),
-                    List(dd.rhs)
+                    List(dd.rhs, ctxRef)
                   )
                   // Mark the compilation unit as needing inlining since we inserted an inline call
                   summon[Context].compilationUnit.needsInlining = true

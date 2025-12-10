@@ -57,9 +57,9 @@ object Async {
     if (usePlugin) {
       // For the plugin path, preprocess the lambda body here since the plugin
       // doesn't call transformContextLambdaImpl
-      val processedExpr = Expr.summon[CpsPreprocessor[F]] match
+      val processedExpr = Expr.summon[CpsPreprocessor[F, C]] match
         case Some(preprocessor) =>
-          preprocessContextLambda[F, T](expr.asTerm, preprocessor)
+          preprocessContextLambda[F, T, C](expr.asTerm, preprocessor)
         case None =>
           expr.asTerm
 
@@ -323,10 +323,10 @@ object Async {
         report.errorAndAbort(s"lambda expected, have: ${f}")
 
   /**
-   * Apply CpsPreprocessor[F] to a body term.
-   * Builds: preprocessor.preprocess[T](body)
+   * Apply CpsPreprocessor[F, C] to a body term.
+   * Builds: preprocessor.preprocess[T](body, ctx)
    */
-  def applyPreprocessorToBody[F[_]: Type, T: Type](using q: Quotes)(body: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F]]): q.reflect.Term =
+  def applyPreprocessorToBody[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using q: Quotes)(body: q.reflect.Term, ctx: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
     import q.reflect._
     val preprocessorTerm = preprocessor.asTerm
     val preprocessMethod = preprocessorTerm.tpe.typeSymbol.methodMember("preprocess").head
@@ -335,14 +335,14 @@ object Async {
         Select(preprocessorTerm, preprocessMethod),
         List(TypeTree.of[T])
       ),
-      List(body)
+      List(body, ctx)
     )
 
   /**
    * Preprocess the body of a context lambda (C ?=> T).
    * Recursively rebuilds the structure to preserve lambda type (context function vs regular function).
    */
-  def preprocessContextLambda[F[_]: Type, T: Type](using q: Quotes)(term: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F]]): q.reflect.Term =
+  def preprocessContextLambda[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using q: Quotes)(term: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
     import q.reflect._
 
     def processLambda(t: Term): Term =
@@ -354,8 +354,12 @@ object Async {
         case Block((defDef: DefDef) :: Nil, closure @ Closure(_, _)) =>
           // This is the Lambda - extract body, preprocess, and rebuild
           val params = defDef.paramss.flatMap(_.params).collect { case v: ValDef => v }
+          if (params.isEmpty) then
+            report.errorAndAbort("Lambda has no parameters")
+          val ctxParam = params.head
+          val ctxRef = Ref(ctxParam.symbol)
           val body = defDef.rhs.getOrElse(report.errorAndAbort("DefDef has no body"))
-          val preprocessedBody = applyPreprocessorToBody[F, T](body, preprocessor)
+          val preprocessedBody = applyPreprocessorToBody[F, T, C](body, ctxRef, preprocessor)
           // Copy the DefDef with the new body
           val newDefDef = DefDef.copy(defDef)(defDef.name, defDef.paramss, defDef.returnTpt, Some(preprocessedBody))
           Block(List(newDefDef), Closure(Ref(newDefDef.symbol), None))
@@ -380,10 +384,11 @@ object Async {
         report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
       val oldValDef = oldParams.head
 
-      // Apply preprocessing if CpsPreprocessor[F] exists
-      val preprocessedBody = Expr.summon[CpsPreprocessor[F]] match
+      // Apply preprocessing if CpsPreprocessor[F, C] exists
+      val ctxRef = Ref(oldValDef.symbol)
+      val preprocessedBody = Expr.summon[CpsPreprocessor[F, C]] match
         case Some(preprocessor) =>
-          applyPreprocessorToBody[F, T](body, preprocessor)
+          applyPreprocessorToBody[F, T, C](body, ctxRef, preprocessor)
         case None =>
           body
 

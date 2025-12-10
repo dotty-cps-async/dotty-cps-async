@@ -222,24 +222,28 @@ object CpsTransformHelper {
     findWrapperForMonad("cps.CpsTrySupport", monadType, span)
   }
 
-  def findCpsPreprocessor(monadType: Type, span: Span)(using ctx: Context): Option[Tree] = {
-    findWrapperForMonad("cps.CpsPreprocessor", monadType, span)
+  def findCpsPreprocessor(monadType: Type, contextType: Type, span: Span)(using ctx: Context): Option[Tree] = {
+    val cpsPreprocessorClass = Symbols.requiredClassRef("cps.CpsPreprocessor")
+    val tpe = AppliedType(cpsPreprocessorClass, List(monadType, contextType))
+    findImplicitInstance(tpe, span)
   }
 
   /**
-   * Apply CpsPreprocessor to body if one exists for the monad type.
-   * Wraps: body → preprocessor.preprocess[T](body)
+   * Apply CpsPreprocessor to body if one exists for the monad and context types.
+   * Wraps: body → preprocessor.preprocess[T](body, ctx)
    * @param body The body tree to preprocess
+   * @param ctxRef Reference to the context parameter
    * @param monadType The monad type F[_]
+   * @param contextType The context type C <: CpsMonadContext[F]
    * @return The preprocessed body (or original body if no preprocessor found)
    */
-  def applyPreprocessorIfExists(body: Tree, monadType: Type)(using ctx: Context): Tree = {
-    findCpsPreprocessor(monadType, body.span) match
+  def applyPreprocessorIfExists(body: Tree, ctxRef: Tree, monadType: Type, contextType: Type)(using ctx: Context): Tree = {
+    findCpsPreprocessor(monadType, contextType, body.span) match
       case Some(preprocessor) =>
         val preprocessMethod = Select(preprocessor, "preprocess".toTermName)
         Apply(
           TypeApply(preprocessMethod, List(TypeTree(body.tpe.widen))),
-          List(body)
+          List(body, ctxRef)
         )
       case None =>
         body

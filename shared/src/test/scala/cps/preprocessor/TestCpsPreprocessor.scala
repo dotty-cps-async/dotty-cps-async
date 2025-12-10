@@ -78,6 +78,24 @@ class TestCpsPreprocessor:
     // Check that vals were wrapped (counter should be > 0)
     assertTrue("Val wrapping counter should be positive", TestPreprocessorWrapping.wrapCount > 0)
 
+  /**
+   * Test that preprocessor can access the context.
+   * This verifies that ctx is properly passed to the preprocessor macro.
+   */
+  @Test def testPreprocessorUsesContext(): Unit =
+    import TestPreprocessorWithContext.given
+
+    TestPreprocessorWithContext.reset()
+
+    val c = async[ComputationBound] {
+      val x = 42
+      x + 1
+    }
+    val r = c.run()
+    assertEquals(Success(43), r)
+    // Check that context was accessed
+    assertTrue("Context should have been accessed", TestPreprocessorWithContext.contextWasAccessed)
+
 
 /**
  * Simple preprocessor that just tracks whether it was called.
@@ -89,9 +107,9 @@ object TestPreprocessorTracking:
   def reset(): Unit =
     wasCalled = false
 
-  given CpsPreprocessor[ComputationBound] with
-    inline def preprocess[A](inline body: A): A =
-      ${ TestPreprocessorMacros.trackingImpl[A]('body) }
+  given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
+    inline def preprocess[A](inline body: A, inline ctx: C): A =
+      ${ TestPreprocessorMacros.trackingImpl[A, C]('body, 'ctx) }
 
 
 /**
@@ -108,6 +126,26 @@ object TestPreprocessorWrapping:
     wrapCount += 1
     value
 
-  given CpsPreprocessor[ComputationBound] with
-    inline def preprocess[A](inline body: A): A =
-      ${ TestPreprocessorMacros.wrappingImpl[A]('body) }
+  given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
+    inline def preprocess[A](inline body: A, inline ctx: C): A =
+      ${ TestPreprocessorMacros.wrappingImpl[A, C]('body, 'ctx) }
+
+
+/**
+ * Preprocessor that demonstrates using the context parameter.
+ * This tests that ctx is actually accessible in the macro.
+ */
+object TestPreprocessorWithContext:
+  @volatile var contextWasAccessed: Boolean = false
+
+  def reset(): Unit =
+    contextWasAccessed = false
+
+  def recordContextAccess[C <: CpsMonadContext[ComputationBound]](ctx: C): Unit =
+    // Access the monad from context to verify it's a real context
+    val _ = ctx.monad
+    contextWasAccessed = true
+
+  given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
+    inline def preprocess[A](inline body: A, inline ctx: C): A =
+      ${ TestPreprocessorMacros.withContextImpl[A, C]('body, 'ctx) }
