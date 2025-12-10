@@ -96,6 +96,57 @@ class TestCpsPreprocessor:
     // Check that context was accessed
     assertTrue("Context should have been accessed", TestPreprocessorWithContext.contextWasAccessed)
 
+  /**
+   * Test that preprocessor is called when using reify/reflect syntax.
+   * This verifies that CpsPreprocessor works with the reflect[F] extension.
+   */
+  @Test def testPreprocessorWithReifyReflect(): Unit =
+    import TestPreprocessorTracking.given
+
+    TestPreprocessorTracking.reset()
+
+    val c = reify[ComputationBound] {
+      val a = T1.cbi(5).reflect
+      val b = T1.cbi(10).reflect
+      a + b
+    }
+    val r = c.run()
+    assertEquals(Success(15), r)
+    assertTrue("Preprocessor should have been called with reify/reflect", TestPreprocessorTracking.wasCalled)
+
+  /**
+   * Test that preprocessor can wrap vals when using reify/reflect syntax.
+   */
+  @Test def testPreprocessorWrapsValsWithReifyReflect(): Unit =
+    import TestPreprocessorWrapping.given
+
+    TestPreprocessorWrapping.reset()
+
+    val c = reify[ComputationBound] {
+      val x = T1.cbi(100).reflect
+      val y = T1.cbi(200).reflect
+      x + y
+    }
+    val r = c.run()
+    assertEquals(Success(300), r)
+    assertTrue("Val wrapping counter should be positive with reify/reflect", TestPreprocessorWrapping.wrapCount > 0)
+
+  /**
+   * Test that preprocessor can access context when using reify/reflect syntax.
+   */
+  @Test def testPreprocessorUsesContextWithReifyReflect(): Unit =
+    import TestPreprocessorWithContext.given
+
+    TestPreprocessorWithContext.reset()
+
+    val c = reify[ComputationBound] {
+      val x = T1.cbi(42).reflect
+      x + 1
+    }
+    val r = c.run()
+    assertEquals(Success(43), r)
+    assertTrue("Context should have been accessed with reify/reflect", TestPreprocessorWithContext.contextWasAccessed)
+
 
 /**
  * Simple preprocessor that just tracks whether it was called.
