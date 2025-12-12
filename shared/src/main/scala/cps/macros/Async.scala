@@ -20,15 +20,20 @@ object Async {
 
   class InferAsyncArg[F[_], C <: CpsMonadContext[F]](using val am: CpsMonad.Aux[F, C]) {
 
-    transparent inline def apply[T](inline expr: C ?=> T) = ${
-      inferAsyncArgApplyImpl[F, T, C]('am, 'expr)
-    }
-
-    //
-    // am.apply(transformContextLambda(expr))
-    // am.apply(x =>
-    //   transform[F,T,C](expr,x)
-    // )
+    /**
+     * Two-stage async:
+     * 1. This transparent inline checks for preprocessor and builds the call to stage 2
+     * 2. If preprocessor exists, preprocessing is applied inline BEFORE stage 2 macro runs
+     */
+    transparent inline def apply[T](inline expr: C ?=> T): F[T] =
+      scala.compiletime.summonFrom {
+        case preprocessor: CpsPreprocessor[F, C] =>
+          // Wrap expr with preprocessing - preprocess is transparent inline so expands here
+          asyncStage2[F, T, C](am, (ctx: C) ?=> preprocessor.preprocess[T](expr(using ctx), ctx))
+        case _ =>
+          // No preprocessor - pass expr directly to stage 2
+          asyncStage2[F, T, C](am, expr)
+      }
 
     transparent inline def in[T](mc: CpsMonadContextProvider[F])(inline expr: mc.Context ?=> T): F[T] =
       //  TODO: compile-time check instead instance-om.
@@ -47,16 +52,53 @@ object Async {
   transparent inline def async[F[_]](using am: CpsMonad[F]) =
     new InferAsyncArg(using am)
 
+  /**
+   * Stage 2: Do CPS transform. By this point, preprocessing has already happened (inline).
+   * This is the macro that does the actual CPS transformation.
+   */
+  transparent inline def asyncStage2[F[_], T, C <: CpsMonadContext[F]](inline am: CpsMonad.Aux[F, C], inline expr: C ?=> T): F[T] = ${
+    asyncStage2Impl[F, T, C]('am, 'expr)
+  }
+
+  def asyncStage2Impl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](am: Expr[CpsMonad.Aux[F, C]], expr: Expr[C ?=> T])(
+      using Quotes
+  ): Expr[F[T]] = {
+    import quotes.reflect._
+    val usePlugin = Expr.summon[UseCompilerPlugin.type].isDefined
+
+    if (usePlugin) then
+      // Plugin path
+      val retval = Apply(
+        TypeApply(
+          Ref(Symbol.requiredMethod("cps.plugin.cpsAsyncApply")),
+          List(Inferred(TypeRepr.of[F]), Inferred(TypeRepr.of[T]), Inferred(TypeRepr.of[C]))
+        ),
+        List(am.asTerm, expr.asTerm)
+      ).asExprOf[F[T]]
+      TransformUtil.findDefinitionWithoutSymbol(retval.asTerm) match
+        case Some(tree) =>
+          println(s"!! asyncStage2Impl:found definition without symbol ${tree.show}")
+        case None =>
+        // do nothing
+      val owners = TransformUtil.findAllOwnersIn(retval.asTerm)
+      if (owners.size > 1) then println(s"!! asyncStage2Impl: more than one owner: ${owners.mkString("\n")}")
+      val incorrectDef = TransformUtil.findSubtermWithIncorrectOwner(Symbol.spliceOwner, retval.asTerm)
+      if (incorrectDef.isDefined) then println(s"!! asyncStage2Impl: incorrect owner: ${incorrectDef.get.show}")
+      retval
+    else
+      // Macro path - no preprocessing needed, it was already done inline
+      val fun = transformContextLambdaImplNoPreprocess(expr)
+      '{ ${ am }.apply($fun) }
+  }
+
+  // Keep the old implementation for backward compatibility (used by InferAsyncArg1, transformContextLambda, etc.)
   def inferAsyncArgApplyImpl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](am: Expr[CpsMonad.Aux[F, C]], expr: Expr[C ?=> T])(
       using Quotes
   ): Expr[F[T]] = {
     import quotes.reflect._
     val usePlugin =
-      Expr.summon[UseCompilerPlugin.type].isDefined // ||CompilationInfo.XmacroSettings.find(_ == "cps:plugin").isDefined
-    // Problem: XmacroSettings still experimental
+      Expr.summon[UseCompilerPlugin.type].isDefined
     if (usePlugin) {
-      // For the plugin path, preprocess the lambda body here since the plugin
-      // doesn't call transformContextLambdaImpl
       val processedExpr = Expr.summon[CpsPreprocessor[F, C]] match
         case Some(preprocessor) =>
           preprocessContextLambda[F, T, C](expr.asTerm, preprocessor)
@@ -392,7 +434,45 @@ object Async {
         case None =>
           body
 
-      val transformed = transformImpl[F, T, C](preprocessedBody.changeOwner(Symbol.spliceOwner).asExprOf[T], Ref(oldValDef.symbol).asExprOf[C])
+      val preprocessedExpr = preprocessedBody.changeOwner(Symbol.spliceOwner).asExprOf[T]
+      val transformed = transformImpl[F, T, C](preprocessedExpr, Ref(oldValDef.symbol).asExprOf[C])
+      val mt = MethodType(List(oldValDef.name))(_ => List(oldValDef.tpt.tpe), _ => TypeRepr.of[F[T]])
+      val nLambda = Lambda(
+        Symbol.spliceOwner,
+        mt,
+        (owner, params) => {
+          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+        }
+      )
+      nestFun(nLambda)
+
+    val retval = inInlined(cexpr.asTerm, transformNotInlined).asExprOf[C => F[T]]
+    retval
+  }
+
+  /**
+   * Version of transformContextLambdaImpl that does NOT apply preprocessing.
+   * Used in stage 2 when preprocessing has already been applied in stage 1.
+   */
+  def transformContextLambdaImplNoPreprocess[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](
+      cexpr: Expr[C ?=> T]
+  )(using Quotes): Expr[C => F[T]] = {
+    import quotes.reflect._
+
+    def inInlined(t: Term, f: Term => Term): Term =
+      t match
+        case Inlined(call, bindings, body) => Inlined(call, bindings, f(body))
+        case other                         => other
+
+    def transformNotInlined(t: Term): Term =
+      val (oldParams, body, nestFun) = extractContextLambda(t)
+      if (oldParams.size != 1) then
+        report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
+      val oldValDef = oldParams.head
+
+      // NO preprocessing - it was already done in stage 1
+      val bodyExpr = body.changeOwner(Symbol.spliceOwner).asExprOf[T]
+      val transformed = transformImpl[F, T, C](bodyExpr, Ref(oldValDef.symbol).asExprOf[C])
       val mt = MethodType(List(oldValDef.name))(_ => List(oldValDef.tpt.tpe), _ => TypeRepr.of[F[T]])
       val nLambda = Lambda(
         Symbol.spliceOwner,

@@ -147,6 +147,23 @@ class TestCpsPreprocessor:
     assertEquals(Success(43), r)
     assertTrue("Context should have been accessed with reify/reflect", TestPreprocessorWithContext.contextWasAccessed)
 
+  /**
+   * Test that preprocessor can insert await calls that are then processed by CPS transform.
+   * This is the key test for durable monad use case.
+   */
+  @Test def testPreprocessorInsertsAwait(): Unit =
+    import TestPreprocessorWithAwaitInsertion.given
+    import cps.macros.flags.PrintCode
+    given PrintCode = PrintCode
+
+    val c = async[ComputationBound] {
+      val x = 10
+      val y = 20
+      x + y
+    }
+    val r = c.run()
+    assertEquals(Success(30), r)
+
 
 /**
  * Simple preprocessor that just tracks whether it was called.
@@ -159,7 +176,7 @@ object TestPreprocessorTracking:
     wasCalled = false
 
   given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
-    inline def preprocess[A](inline body: A, inline ctx: C): A =
+    transparent inline def preprocess[A](inline body: A, inline ctx: C): A =
       ${ TestPreprocessorMacros.trackingImpl[A, C]('body, 'ctx) }
 
 
@@ -178,7 +195,7 @@ object TestPreprocessorWrapping:
     value
 
   given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
-    inline def preprocess[A](inline body: A, inline ctx: C): A =
+    transparent inline def preprocess[A](inline body: A, inline ctx: C): A =
       ${ TestPreprocessorMacros.wrappingImpl[A, C]('body, 'ctx) }
 
 
@@ -198,5 +215,16 @@ object TestPreprocessorWithContext:
     contextWasAccessed = true
 
   given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
-    inline def preprocess[A](inline body: A, inline ctx: C): A =
+    transparent inline def preprocess[A](inline body: A, inline ctx: C): A =
       ${ TestPreprocessorMacros.withContextImpl[A, C]('body, 'ctx) }
+
+
+/**
+ * Preprocessor that inserts await calls around val definitions.
+ * This tests that preprocessor-generated await calls are handled by CPS transform.
+ */
+object TestPreprocessorWithAwaitInsertion:
+
+  given [C <: CpsMonadContext[ComputationBound]]: CpsPreprocessor[ComputationBound, C] with
+    transparent inline def preprocess[A](inline body: A, inline ctx: C): A =
+      ${ TestPreprocessorMacros.withAwaitInsertionImpl[A, C]('body, 'ctx) }

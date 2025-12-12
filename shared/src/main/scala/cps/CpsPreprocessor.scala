@@ -40,4 +40,4 @@ trait CpsPreprocessor[F[_], C <: CpsMonadContext[F]]:
    * @tparam A The result type of the body expression
    * @return The transformed body expression
    */
-  inline def preprocess[A](inline body: A, inline ctx: C): A
+  transparent inline def preprocess[A](inline body: A, inline ctx: C): A
