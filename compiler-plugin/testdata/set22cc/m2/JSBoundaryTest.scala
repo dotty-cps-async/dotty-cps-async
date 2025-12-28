@@ -10,11 +10,11 @@ import gears.async.given
 import cps.plugin.annotation.CpsDebugLevel
 
 
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class JSBoundaryTest {
 
 
-  @CpsDebugLevel(20)
+  //@CpsDebugLevel(20)
   def simpleFlowWithSuspension = {
     println("simple flow with suspension:start")
     val r = async[JSAsync] {

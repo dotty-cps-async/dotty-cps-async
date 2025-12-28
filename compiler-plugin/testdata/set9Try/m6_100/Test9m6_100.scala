@@ -8,7 +8,7 @@ import cps.plugin.annotation.CpsDebugLevel
 import testUtil.*
 
 @experimental
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 object Test9m6_100 {
 
   var finallyWasRun=false

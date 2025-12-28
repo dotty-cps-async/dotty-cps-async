@@ -37,7 +37,7 @@ trait CpsExpr[F[_]: Type, T: Type](monad: Expr[CpsMonad[F]], prev: Seq[ExprTreeG
 
   def transformed(using Quotes): Expr[F[T]] = {
     import quotes.reflect._
-    val DEBUG = true
+    val DEBUG = false
     if (prev.isEmpty) fLast
     else
 

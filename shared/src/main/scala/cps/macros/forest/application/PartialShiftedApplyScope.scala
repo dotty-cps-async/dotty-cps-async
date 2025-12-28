@@ -3,7 +3,6 @@ package cps.macros.forest.application
 import cps.*
 import cps.macros.forest.*
 
-import scala.util.control.NonFatal
 
 enum ApplicationShiftType:
   case CPS_ONLY
@@ -60,14 +59,7 @@ trait PartialShiftedApplyScope[F[_], CT, CC <: CpsMonadContext[F]]:
                     (withArg, true)
                   case _ => (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
               else
-                try (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
-                catch
-                  case NonFatal(ex) =>
-                    println(s"exception in appliedToArgsOrTypeArgs, term.tpe=${term.tpe}")
-                    println(
-                      s"applyFlags.isExtensionMethod=${applyFlags.isExtensionMethod}, applyFlags.useExtraArguments=${applyFlags.useExtraArguments}, fWasAdded=$fWasAdded"
-                    )
-                    throw ex
+                (term.appliedToArgs(args.map(argTransform).toList), fWasAdded)
 
             case ApplyTypeArgsList(originApply) =>
               if applyFlags.isExtensionMethod && applyFlags.useExtraArguments && !fWasAdded then

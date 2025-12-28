@@ -95,7 +95,8 @@ object InlinedTransform {
         } catch {
           case ex: Throwable =>
             report.error(s"Error in tail.asyncKind: ${ex.getMessage}", tail.origin.srcPos)
-            println(s"tail = ${tail.show}")
+            if (summon[CpsTopLevelContext].debugSettings.debugLevel > 0) then
+              println(s"tail = ${tail.show}")
             throw CpsTransformException(s"Error in tail.asyncKind", tail.origin.srcPos)
         }
       val retval = adoptedRhs.asyncKind match

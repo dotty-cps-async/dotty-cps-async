@@ -294,7 +294,7 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
       Log.info(s"transformDefDefInsideAsync: body: ${ddef.rhs.show}", 0, ddef.srcPos)(using ctx, tctx)
     }
     val ddefCtx = ctx.withOwner(ddef.symbol)
-    // Note: Preprocessing is already applied by the macro (inferAsyncArgApplyImpl)
+    // Note: Preprocessing is already applied by the macro (asyncStage2Impl)
     val nRhsCps = RootTransform(ddef.rhs, ddef.symbol, 0)(using ddefCtx, tctx)
     val nRhsTerm = wrapTopLevelCpsTree(nRhsCps)(using ddefCtx, tctx)
     val nRhsType = nRhsTerm.tpe.widen

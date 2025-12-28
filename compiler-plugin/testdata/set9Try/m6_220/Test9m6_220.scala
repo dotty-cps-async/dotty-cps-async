@@ -9,7 +9,7 @@ import testUtil.*
 
 
 @experimental
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 object Test9m6_220 {
 
   var finallyWasRun=false

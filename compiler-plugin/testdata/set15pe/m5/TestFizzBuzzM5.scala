@@ -15,7 +15,7 @@ import cps.plugin.annotation.CpsDebugLevel
 import scala.concurrent.ExecutionContext.Implicits.global
 
 @experimental
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class TestFizzBuzzM5:
 
   import cps.pe.inlineDirectRef.*

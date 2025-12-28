@@ -19,7 +19,7 @@ import scala.annotation.experimental
 import scala.concurrent.ExecutionContext.Implicits.global
 
 // This test will be deleted after disabling of automatic coloring.
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 @experimental
 class TestFizzBuzz:
 

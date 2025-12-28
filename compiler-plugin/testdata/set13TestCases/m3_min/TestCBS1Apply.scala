@@ -17,7 +17,7 @@ given UseCompilerPlugin.type = UseCompilerPlugin
 def TestCBS1Apply_toplevelfun(x: =>Int):Int = x + x
 
 
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class TestCBS1Apply:
 
   class Zzz(zx:Int) {

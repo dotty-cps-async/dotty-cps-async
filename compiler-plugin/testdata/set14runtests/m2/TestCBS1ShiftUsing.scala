@@ -8,7 +8,7 @@ import cps.testconfig.given
 
 import cps.plugin.annotation.CpsDebugLevel
 
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class TestBS1ShiftUsing:
 
   class TestResource(val label: String):

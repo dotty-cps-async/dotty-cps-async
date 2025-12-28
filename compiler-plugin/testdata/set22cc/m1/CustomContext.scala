@@ -52,7 +52,7 @@ given jsAsyncFromDirect(using direct: CpsDirect[JSAsync]): JSAsyncContext =
 
 
 @experimental
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 object CustomContext {
 
 

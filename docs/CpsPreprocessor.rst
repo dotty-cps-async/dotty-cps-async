@@ -1,10 +1,10 @@
 CpsPreprocessor
 ===============
 
-Sometimes you need to transform code inside |async|_ blocks before CPS transformation occurs.
+Sometimes you need to transform code inside `async` blocks before CPS transformation occurs.
 For example, you might want to log every value binding, cache computations for replay, or check that all values are immutable.
 
-|CpsPreprocessor|_ is a typeclass that lets you hook into this stage: define a preprocessor for your monad, and all |async|_ blocks using that monad will have their code transformed before the CPS machinery runs.
+|CpsPreprocessor|_ is a typeclass that lets you hook into this stage: define a preprocessor for your monad, and all async blocks using that monad will have their code transformed before the CPS machinery runs.
 
 
 Tracing Example

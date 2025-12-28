@@ -8,7 +8,7 @@ import cps.plugin.annotation.CpsDebugLevel
 import testUtil.*
 
 @experimental
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 object Test10m2 {
 
   def direct(x:String)(using CpsDirect[FreeMonad]): String = x

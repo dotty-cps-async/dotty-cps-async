@@ -20,11 +20,10 @@ object Async {
 
   class InferAsyncArg[F[_], C <: CpsMonadContext[F]](using val am: CpsMonad.Aux[F, C]) {
 
-    /**
-     * Two-stage async:
-     * 1. This transparent inline checks for preprocessor and builds the call to stage 2
-     * 2. If preprocessor exists, preprocessing is applied inline BEFORE stage 2 macro runs
-     */
+    /** Two-stage async:
+      *   1. This transparent inline checks for preprocessor and builds the call to stage 2
+      *   2. If preprocessor exists, preprocessing is applied inline BEFORE stage 2 macro runs
+      */
     transparent inline def apply[T](inline expr: C ?=> T): F[T] =
       scala.compiletime.summonFrom {
         case preprocessor: CpsPreprocessor[F, C] =>
@@ -52,16 +51,16 @@ object Async {
   transparent inline def async[F[_]](using am: CpsMonad[F]) =
     new InferAsyncArg(using am)
 
-  /**
-   * Stage 2: Do CPS transform. By this point, preprocessing has already happened (inline).
-   * This is the macro that does the actual CPS transformation.
-   */
-  transparent inline def asyncStage2[F[_], T, C <: CpsMonadContext[F]](inline am: CpsMonad.Aux[F, C], inline expr: C ?=> T): F[T] = ${
-    asyncStage2Impl[F, T, C]('am, 'expr)
-  }
+  /** Stage 2: Do CPS transform. By this point, preprocessing has already happened (inline). This is the macro that does the actual
+    * CPS transformation.
+    */
+  transparent inline def asyncStage2[F[_], T, C <: CpsMonadContext[F]](inline am: CpsMonad.Aux[F, C], inline expr: C ?=> T): F[T] =
+    ${
+      asyncStage2Impl[F, T, C]('am, 'expr)
+    }
 
-  def asyncStage2Impl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](am: Expr[CpsMonad.Aux[F, C]], expr: Expr[C ?=> T])(
-      using Quotes
+  def asyncStage2Impl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](am: Expr[CpsMonad.Aux[F, C]], expr: Expr[C ?=> T])(using
+      Quotes
   ): Expr[F[T]] = {
     import quotes.reflect._
     val usePlugin = Expr.summon[UseCompilerPlugin.type].isDefined
@@ -75,58 +74,16 @@ object Async {
         ),
         List(am.asTerm, expr.asTerm)
       ).asExprOf[F[T]]
-      TransformUtil.findDefinitionWithoutSymbol(retval.asTerm) match
-        case Some(tree) =>
-          println(s"!! asyncStage2Impl:found definition without symbol ${tree.show}")
-        case None =>
-        // do nothing
-      val owners = TransformUtil.findAllOwnersIn(retval.asTerm)
-      if (owners.size > 1) then println(s"!! asyncStage2Impl: more than one owner: ${owners.mkString("\n")}")
-      val incorrectDef = TransformUtil.findSubtermWithIncorrectOwner(Symbol.spliceOwner, retval.asTerm)
-      if (incorrectDef.isDefined) then println(s"!! asyncStage2Impl: incorrect owner: ${incorrectDef.get.show}")
+      if false then
+        val owners = TransformUtil.findAllOwnersIn(retval.asTerm)
+        if (owners.size > 1) then println(s"!! asyncStage2Impl: more than one owner: ${owners.mkString("\n")}")
+        val incorrectDef = TransformUtil.findSubtermWithIncorrectOwner(Symbol.spliceOwner, retval.asTerm)
+        if (incorrectDef.isDefined) then println(s"!! asyncStage2Impl: incorrect owner: ${incorrectDef.get.show}")
       retval
     else
       // Macro path - no preprocessing needed, it was already done inline
       val fun = transformContextLambdaImplNoPreprocess(expr)
       '{ ${ am }.apply($fun) }
-  }
-
-  // Keep the old implementation for backward compatibility (used by InferAsyncArg1, transformContextLambda, etc.)
-  def inferAsyncArgApplyImpl[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](am: Expr[CpsMonad.Aux[F, C]], expr: Expr[C ?=> T])(
-      using Quotes
-  ): Expr[F[T]] = {
-    import quotes.reflect._
-    val usePlugin =
-      Expr.summon[UseCompilerPlugin.type].isDefined
-    if (usePlugin) {
-      val processedExpr = Expr.summon[CpsPreprocessor[F, C]] match
-        case Some(preprocessor) =>
-          preprocessContextLambda[F, T, C](expr.asTerm, preprocessor)
-        case None =>
-          expr.asTerm
-
-      val retval = Apply(
-        TypeApply(
-          Ref(Symbol.requiredMethod("cps.plugin.cpsAsyncApply")),
-          List(Inferred(TypeRepr.of[F]), Inferred(TypeRepr.of[T]), Inferred(TypeRepr.of[C]))
-        ),
-        List(am.asTerm, processedExpr)
-      ).asExprOf[F[T]]
-      TransformUtil.findDefinitionWithoutSymbol(retval.asTerm) match
-        case Some(tree) =>
-          println(s"!! inferAsyncArgApplyImpl:found definition without symbol ${tree.show}")
-        case None =>
-        // do nothing
-      val owners = TransformUtil.findAllOwnersIn(retval.asTerm)
-      if (owners.size > 1) then println(s"!! inferAsyncArgApplyImpl: more than one owner: ${owners.mkString("\n")}")
-      val incorrectDef = TransformUtil.findSubtermWithIncorrectOwner(Symbol.spliceOwner, retval.asTerm)
-      if (incorrectDef.isDefined) then println(s"!! inferAsyncArgApplyImpl: incorrect owner: ${incorrectDef.get.show}")
-      retval
-    } else {
-      val fun = transformContextLambdaImpl(expr)
-      '{ ${ am }.apply($fun) }
-    }
-
   }
 
   transparent inline def transformContextLambda[F[_], T, C <: CpsMonadContext[F]](inline expr: C ?=> T): C => F[T] =
@@ -187,7 +144,7 @@ object Async {
             else '{ ${ dm }.wrap(${ transformed }) }
           else
             report.errorAndAbort(
-              s"loom enbled but monad  ${dm.show} of type ${dm.asTerm.tpe.widen.show} is not Async, runtimeAwait = ${cpsRuntimeAwait.show}"
+              s"loom enabled but monad ${dm.show} of type ${dm.asTerm.tpe.widen.show} is not Async, runtimeAwait = ${cpsRuntimeAwait.show}"
             )
         } else {
           val optRuntimeAwaitProvider = Expr.summon[CpsRuntimeAwaitProvider[F]]
@@ -228,7 +185,7 @@ object Async {
         println(s"transformed tree: ${r.asTerm}")
       r
     catch
-      case ex:  MacroError =>
+      case ex: MacroError =>
         if (flags.debugLevel > 0)
           ex.printStackTrace
         report.errorAndAbort(ex.msg, ex.posExpr)
@@ -326,8 +283,9 @@ object Async {
           //   // note, that this repeater is outside varargs
           //   // (it's hard to reproduce test)
           case _ =>
-            println("f:" + f.show)
-            println("fTree:" + fTree)
+            if (cpsCtx.flags.debugLevel > 0) then
+              println("f:" + f.show)
+              println("fTree:" + fTree)
             throw MacroError(s"language construction is not supported: ${fTree}", f)
         }
     retval
@@ -347,11 +305,12 @@ object Async {
       Some(cpsCtx)
     )
 
-  /**
-   * Extract lambda parameters and body from a context function term.
-   * Returns (params, body, wrapper function to reconstruct the Inlined/Block structure)
-   */
-  def extractContextLambda(using q: Quotes)(f: q.reflect.Term): (List[q.reflect.ValDef], q.reflect.Term, q.reflect.Term => q.reflect.Term) =
+  /** Extract lambda parameters and body from a context function term. Returns (params, body, wrapper function to reconstruct the
+    * Inlined/Block structure)
+    */
+  def extractContextLambda(using
+      q: Quotes
+  )(f: q.reflect.Term): (List[q.reflect.ValDef], q.reflect.Term, q.reflect.Term => q.reflect.Term) =
     import q.reflect._
     f match
       case Inlined(call, bindings, body) =>
@@ -364,11 +323,11 @@ object Async {
       case _ =>
         report.errorAndAbort(s"lambda expected, have: ${f}")
 
-  /**
-   * Apply CpsPreprocessor[F, C] to a body term.
-   * Builds: preprocessor.preprocess[T](body, ctx)
-   */
-  def applyPreprocessorToBody[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using q: Quotes)(body: q.reflect.Term, ctx: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
+  /** Apply CpsPreprocessor[F, C] to a body term. Builds: preprocessor.preprocess[T](body, ctx)
+    */
+  def applyPreprocessorToBody[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using
+      q: Quotes
+  )(body: q.reflect.Term, ctx: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
     import q.reflect._
     val preprocessorTerm = preprocessor.asTerm
     val preprocessMethod = preprocessorTerm.tpe.typeSymbol.methodMember("preprocess").head
@@ -380,11 +339,12 @@ object Async {
       List(body, ctx)
     )
 
-  /**
-   * Preprocess the body of a context lambda (C ?=> T).
-   * Recursively rebuilds the structure to preserve lambda type (context function vs regular function).
-   */
-  def preprocessContextLambda[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using q: Quotes)(term: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
+  /** Preprocess the body of a context lambda (C ?=> T). Recursively rebuilds the structure to preserve lambda type (context
+    * function vs regular function).
+    */
+  def preprocessContextLambda[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](using
+      q: Quotes
+  )(term: q.reflect.Term, preprocessor: Expr[CpsPreprocessor[F, C]]): q.reflect.Term =
     import q.reflect._
 
     def processLambda(t: Term): Term =
@@ -396,8 +356,7 @@ object Async {
         case Block((defDef: DefDef) :: Nil, closure @ Closure(_, _)) =>
           // This is the Lambda - extract body, preprocess, and rebuild
           val params = defDef.paramss.flatMap(_.params).collect { case v: ValDef => v }
-          if (params.isEmpty) then
-            report.errorAndAbort("Lambda has no parameters")
+          if (params.isEmpty) then report.errorAndAbort("Lambda has no parameters")
           val ctxParam = params.head
           val ctxRef = Ref(ctxParam.symbol)
           val body = defDef.rhs.getOrElse(report.errorAndAbort("DefDef has no body"))
@@ -422,8 +381,7 @@ object Async {
 
     def transformNotInlined(t: Term): Term =
       val (oldParams, body, nestFun) = extractContextLambda(t)
-      if (oldParams.size != 1) then
-        report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
+      if (oldParams.size != 1) then report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
       val oldValDef = oldParams.head
 
       // Apply preprocessing if CpsPreprocessor[F, C] exists
@@ -450,10 +408,9 @@ object Async {
     retval
   }
 
-  /**
-   * Version of transformContextLambdaImpl that does NOT apply preprocessing.
-   * Used in stage 2 when preprocessing has already been applied in stage 1.
-   */
+  /** Version of transformContextLambdaImpl that does NOT apply preprocessing. Used in stage 2 when preprocessing has already been
+    * applied in stage 1.
+    */
   def transformContextLambdaImplNoPreprocess[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](
       cexpr: Expr[C ?=> T]
   )(using Quotes): Expr[C => F[T]] = {
@@ -466,8 +423,7 @@ object Async {
 
     def transformNotInlined(t: Term): Term =
       val (oldParams, body, nestFun) = extractContextLambda(t)
-      if (oldParams.size != 1) then
-        report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
+      if (oldParams.size != 1) then report.errorAndAbort(s"lambda with one argument expected, we have ${oldParams}", cexpr)
       val oldValDef = oldParams.head
 
       // NO preprocessing - it was already done in stage 1

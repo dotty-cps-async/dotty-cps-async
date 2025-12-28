@@ -217,7 +217,7 @@ trait AsyncIterator[F[_]: CpsConcurrentMonad, T]:
       case None => summon[CpsConcurrentMonad[F]].pure(s0)
     }
 
-  /** Scan the value and output in the resulting iterator cummulative accumulated values. Note, that
+  /** Scan the value and output in the resulting iterator cumulative accumulated values. Note, that
     *   - `f` should be side effects free, since it can be reapplied in situation, when parallel threads tryng to read the next
     *     value
     *   - s0 and f(s,t) should not be nulls.
@@ -248,7 +248,7 @@ trait AsyncIterator[F[_]: CpsConcurrentMonad, T]:
     }
   }
 
-  /** Scan the value and output in the resulting iterator cummulative accumulated values. Note, that
+  /** Scan the value and output in the resulting iterator cumulative accumulated values. Note, that
     *   - `f` should be side effects free, since it can be reapplied in situation, when parallel threads tryng to read the next
     *     value
     *   - s0 and f(s,t) should not be nulls.

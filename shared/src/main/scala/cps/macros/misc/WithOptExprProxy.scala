@@ -11,7 +11,7 @@ object WithOptExprProxy:
 
   def apply[T: Type, S: Type](name: String, originExpr: Expr[T])(buildExpr: Expr[T] => Expr[S])(using Quotes): Expr[S] =
     import quotes.reflect.*
-    val DEBUG = true
+    val DEBUG = false
     if (DEBUG) {
       TransformUtil.dummyMapper(originExpr.asTerm, Symbol.spliceOwner)
     }

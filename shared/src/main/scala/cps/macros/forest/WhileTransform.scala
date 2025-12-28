@@ -21,7 +21,7 @@ object WhileTransform:
     val cpsRepeat = Async.nestTransform(repeat, cpsCtx)
     val isAsync = cpsCond.isAsync || cpsRepeat.isAsync
 
-    val DEBUG = true
+    val DEBUG = false
 
     val unitBuilder = {
       if (!cpsCond.isAsync)

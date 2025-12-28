@@ -11,7 +11,7 @@ import cps.plugin.annotation.CpsDebugLevel
 import cps.testconfig.given
 
 
-@CpsDebugLevel(20)
+//@CpsDebugLevel(20)
 class TestBS1ShiftIterableOps:
 
 

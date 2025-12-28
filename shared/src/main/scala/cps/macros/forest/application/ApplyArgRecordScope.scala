@@ -397,21 +397,16 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         classOf[Function1[?, ?]],
         classOf[Function1[?, ?]]
       )
-      try
-        val mt = mtApply
-          .invoke(
-            mtModule,
-            methodKind,
-            paramNames,
-            (m: MethodType) => paramTypes,
-            (m: MethodType) => syncBody.tpe.widen
-          )
-          .asInstanceOf[MethodType]
-        Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
-      catch
-        case NonFatal(ex) =>
-          println(s"Can't create MethodType, fallback: $ex")
-          throw ex
+      val mt = mtApply
+        .invoke(
+          mtModule,
+          methodKind,
+          paramNames,
+          (m: MethodType) => paramTypes,
+          (m: MethodType) => syncBody.tpe.widen
+        )
+        .asInstanceOf[MethodType]
+      Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
     }
 
     def extractParamsAndBody(): (List[ValDef], Term) =
