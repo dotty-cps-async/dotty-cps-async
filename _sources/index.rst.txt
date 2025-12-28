@@ -19,6 +19,7 @@ User Manual
    AsyncStreams
    Integrations
    MonadContexts
+   CpsPreprocessor
    RuntimeAwait
    Features
    Migration

@@ -1,0 +1,6 @@
+
+
+We need to add to documentation newest introduced CpsPreprocessor.
+
+The original use-case for it is DurableExectution (see /Users/rssh/work/oss/durable-monad )
+maybe we need to find other, smallest use-cases

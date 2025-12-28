@@ -1,0 +1,263 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>CpsPreprocessor &#8212; dotty-cps-async 1.2.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css" />
+    <link rel="stylesheet" type="text/css" href="_static/css/s4defs-roles.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Runtime Await." href="RuntimeAwait.html" />
+    <link rel="prev" title="Monad Context" href="MonadContexts.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="RuntimeAwait.html" title="Runtime Await."
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="MonadContexts.html" title="Monad Context"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.2.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">CpsPreprocessor</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="cpspreprocessor">
+<h1>CpsPreprocessor<a class="headerlink" href="#cpspreprocessor" title="Permalink to this heading">¶</a></h1>
+<p>Sometimes you need to transform code inside <cite>async</cite> blocks before CPS transformation occurs.
+For example, you might want to log every value binding, cache computations for replay, or check that all values are immutable.</p>
+<p><a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsPreprocessor.scala"><code class="docutils literal notranslate"><span class="pre">CpsPreprocessor</span></code></a> is a typeclass that lets you hook into this stage: define a preprocessor for your monad, and all async blocks using that monad will have their code transformed before the CPS machinery runs.</p>
+<section id="tracing-example">
+<h2>Tracing Example<a class="headerlink" href="#tracing-example" title="Permalink to this heading">¶</a></h2>
+<p>Let’s build a preprocessor that logs every <code class="docutils literal notranslate"><span class="pre">val</span></code> definition inside an async block.</p>
+<p>First, the usage - what we want to achieve:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="n">async</span><span class="p">[</span><span class="nc">IO</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">computeX</span><span class="p">()</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">computeY</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w"></span>
+<span class="w">  </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="c1">// With our tracing preprocessor, this behaves as if we wrote:</span>
+<span class="n">async</span><span class="p">[</span><span class="nc">IO</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kd">val</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">computeX</span><span class="p">();</span><span class="w"> </span><span class="n">println</span><span class="p">(</span><span class="s">&quot;x = &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">r</span><span class="p">);</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="kd">val</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">computeY</span><span class="p">(</span><span class="n">x</span><span class="p">);</span><span class="w"> </span><span class="n">println</span><span class="p">(</span><span class="s">&quot;y = &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">r</span><span class="p">);</span><span class="w"> </span><span class="n">r</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<section id="step-1-define-the-preprocessor-given">
+<h3>Step 1: Define the Preprocessor Given<a class="headerlink" href="#step-1-define-the-preprocessor-given" title="Permalink to this heading">¶</a></h3>
+<p>The preprocessor is a given instance that delegates to a macro:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">import</span><span class="w"> </span><span class="nn">cps</span><span class="p">.</span><span class="n">*</span>
+<span class="k">import</span><span class="w"> </span><span class="nn">scala</span><span class="p">.</span><span class="nn">quoted</span><span class="p">.</span><span class="n">*</span>
+
+<span class="k">object</span><span class="w"> </span><span class="nc">TracingPreprocessor</span><span class="p">:</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">given</span><span class="w"> </span><span class="p">[</span><span class="nc">C</span><span class="w"> </span><span class="o">&lt;:</span><span class="w"> </span><span class="nc">CpsMonadContext</span><span class="p">[</span><span class="nc">IO</span><span class="p">]]:</span><span class="w"> </span><span class="nc">CpsPreprocessor</span><span class="p">[</span><span class="nc">IO</span><span class="p">,</span><span class="w"> </span><span class="nc">C</span><span class="p">]</span><span class="w"> </span><span class="k">with</span><span class="w"></span>
+<span class="w">    </span><span class="k">transparent</span><span class="w"> </span><span class="k">inline</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="k">inline</span><span class="w"> </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="k">inline</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">C</span><span class="p">):</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="p">${</span><span class="w"> </span><span class="nc">TracingMacro</span><span class="p">.</span><span class="n">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">C</span><span class="p">](</span><span class="ss">&#39;body</span><span class="p">,</span><span class="w"> </span><span class="ss">&#39;ctx</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="step-2-implement-the-macro">
+<h3>Step 2: Implement the Macro<a class="headerlink" href="#step-2-implement-the-macro" title="Permalink to this heading">¶</a></h3>
+<p>The macro receives the async block body and transforms its AST.
+It must be in a separate file from the given definition (Scala 3 macro requirement).</p>
+<p>The macro uses the low-level Reflect API to build AST nodes with correct symbol ownership:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// In a separate file: TracingMacro.scala</span>
+<span class="k">import</span><span class="w"> </span><span class="nn">scala</span><span class="p">.</span><span class="nn">quoted</span><span class="p">.</span><span class="n">*</span>
+
+<span class="k">object</span><span class="w"> </span><span class="nc">TracingMacro</span><span class="p">:</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">:</span><span class="w"> </span><span class="nc">Type</span><span class="p">,</span><span class="w"> </span><span class="nc">C</span><span class="p">:</span><span class="w"> </span><span class="nc">Type</span><span class="p">](</span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">],</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">C</span><span class="p">])(</span><span class="k">using</span><span class="w"> </span><span class="nc">Quotes</span><span class="p">):</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="k">import</span><span class="w"> </span><span class="nn">quotes</span><span class="p">.</span><span class="nn">reflect</span><span class="p">.</span><span class="n">*</span>
+
+<span class="w">    </span><span class="k">def</span><span class="w"> </span><span class="nf">wrapWithTrace</span><span class="p">(</span><span class="n">name</span><span class="p">:</span><span class="w"> </span><span class="nc">String</span><span class="p">,</span><span class="w"> </span><span class="n">rhs</span><span class="p">:</span><span class="w"> </span><span class="nc">Term</span><span class="p">,</span><span class="w"> </span><span class="n">rhsType</span><span class="p">:</span><span class="w"> </span><span class="nc">TypeRepr</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">:</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">):</span><span class="w"> </span><span class="nc">Term</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="c1">// Create: { val result = rhs; println(name + &quot; = &quot; + result); result }</span>
+<span class="w">      </span><span class="kd">val</span><span class="w"> </span><span class="n">resultSym</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">.</span><span class="n">newVal</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;result&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">rhsType</span><span class="p">,</span><span class="w"> </span><span class="nc">Flags</span><span class="p">.</span><span class="nc">EmptyFlags</span><span class="p">,</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">.</span><span class="n">noSymbol</span><span class="p">)</span><span class="w"></span>
+<span class="w">      </span><span class="kd">val</span><span class="w"> </span><span class="n">resultValDef</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">ValDef</span><span class="p">(</span><span class="n">resultSym</span><span class="p">,</span><span class="w"> </span><span class="nc">Some</span><span class="p">(</span><span class="n">rhs</span><span class="p">.</span><span class="n">changeOwner</span><span class="p">(</span><span class="n">resultSym</span><span class="p">)))</span><span class="w"></span>
+<span class="w">      </span><span class="kd">val</span><span class="w"> </span><span class="n">resultRef</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Ref</span><span class="p">(</span><span class="n">resultSym</span><span class="p">)</span><span class="w"></span>
+
+<span class="w">      </span><span class="c1">// Build println call (simplified - real code would use proper method lookup)</span>
+<span class="w">      </span><span class="kd">val</span><span class="w"> </span><span class="n">printCall</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">&#39;{</span><span class="w"> </span><span class="n">println</span><span class="p">(${</span><span class="w"> </span><span class="nc">Expr</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot; = &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">${</span><span class="w"> </span><span class="n">resultRef</span><span class="p">.</span><span class="n">asExpr</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">}.</span><span class="n">asTerm</span><span class="w"></span>
+
+<span class="w">      </span><span class="nc">Block</span><span class="p">(</span><span class="nc">List</span><span class="p">(</span><span class="n">resultValDef</span><span class="p">,</span><span class="w"> </span><span class="n">printCall</span><span class="p">),</span><span class="w"> </span><span class="n">resultRef</span><span class="p">)</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">def</span><span class="w"> </span><span class="nf">transformStatement</span><span class="p">(</span><span class="n">stat</span><span class="p">:</span><span class="w"> </span><span class="nc">Statement</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">:</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">):</span><span class="w"> </span><span class="nc">Statement</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">stat</span><span class="w"> </span><span class="k">match</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">vd</span><span class="w"> </span><span class="o">@</span><span class="w"> </span><span class="nc">ValDef</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">tpt</span><span class="p">,</span><span class="w"> </span><span class="nc">Some</span><span class="p">(</span><span class="n">rhs</span><span class="p">))</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"></span>
+<span class="w">          </span><span class="kd">val</span><span class="w"> </span><span class="n">traced</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">wrapWithTrace</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">rhs</span><span class="p">,</span><span class="w"> </span><span class="n">tpt</span><span class="p">.</span><span class="n">tpe</span><span class="p">,</span><span class="w"> </span><span class="n">vd</span><span class="p">.</span><span class="n">symbol</span><span class="p">)</span><span class="w"></span>
+<span class="w">          </span><span class="nc">ValDef</span><span class="p">.</span><span class="n">copy</span><span class="p">(</span><span class="n">vd</span><span class="p">)(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">tpt</span><span class="p">,</span><span class="w"> </span><span class="nc">Some</span><span class="p">(</span><span class="n">traced</span><span class="p">))</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">other</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">other</span><span class="w"></span>
+
+<span class="w">    </span><span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="n">term</span><span class="p">:</span><span class="w"> </span><span class="nc">Term</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">:</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">):</span><span class="w"> </span><span class="nc">Term</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">      </span><span class="n">term</span><span class="w"> </span><span class="k">match</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">@</span><span class="w"> </span><span class="nc">Block</span><span class="p">(</span><span class="n">stats</span><span class="p">,</span><span class="w"> </span><span class="n">expr</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"></span>
+<span class="w">          </span><span class="nc">Block</span><span class="p">.</span><span class="n">copy</span><span class="p">(</span><span class="n">block</span><span class="p">)(</span><span class="n">stats</span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="n">s</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">transformStatement</span><span class="p">(</span><span class="n">s</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">)),</span><span class="w"> </span><span class="n">transform</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">))</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="nc">Inlined</span><span class="p">(</span><span class="n">call</span><span class="p">,</span><span class="w"> </span><span class="n">bindings</span><span class="p">,</span><span class="w"> </span><span class="n">expansion</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"></span>
+<span class="w">          </span><span class="nc">Inlined</span><span class="p">(</span><span class="n">call</span><span class="p">,</span><span class="w"> </span><span class="n">bindings</span><span class="p">,</span><span class="w"> </span><span class="n">transform</span><span class="p">(</span><span class="n">expansion</span><span class="p">,</span><span class="w"> </span><span class="n">owner</span><span class="p">))</span><span class="w"></span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">other</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">other</span><span class="w"></span>
+
+<span class="w">    </span><span class="n">transform</span><span class="p">(</span><span class="n">body</span><span class="p">.</span><span class="n">asTerm</span><span class="p">,</span><span class="w"> </span><span class="nc">Symbol</span><span class="p">.</span><span class="n">spliceOwner</span><span class="p">).</span><span class="n">asExprOf</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"></span>
+</pre></div>
+</div>
+<p>See <code class="docutils literal notranslate"><span class="pre">shared/src/test/scala/cps/preprocessor/TracingPreprocessorMacro.scala</span></code> for a complete working example.</p>
+</section>
+<section id="step-3-import-and-use">
+<h3>Step 3: Import and Use<a class="headerlink" href="#step-3-import-and-use" title="Permalink to this heading">¶</a></h3>
+<p>Import the preprocessor given, and all async blocks for that monad are automatically transformed:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">import</span><span class="w"> </span><span class="nc">TracingPreprocessor</span><span class="p">.</span><span class="k">given</span>
+
+<span class="kd">val</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">async</span><span class="p">[</span><span class="nc">IO</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="w"></span>
+<span class="w">  </span><span class="n">b</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">10</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+<span class="c1">// Prints:</span>
+<span class="c1">//   a = 2</span>
+<span class="c1">//   b = 4</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="how-it-works">
+<h2>How It Works<a class="headerlink" href="#how-it-works" title="Permalink to this heading">¶</a></h2>
+<p>When you call <code class="docutils literal notranslate"><span class="pre">async[F]</span> <span class="pre">{</span> <span class="pre">body</span> <span class="pre">}</span></code>:</p>
+<ol class="arabic simple">
+<li><p>The library checks if a <code class="docutils literal notranslate"><span class="pre">CpsPreprocessor[F,</span> <span class="pre">C]</span></code> is available</p></li>
+<li><p>If found, it calls <code class="docutils literal notranslate"><span class="pre">preprocessor.preprocess(body,</span> <span class="pre">ctx)</span></code> before CPS transformation</p></li>
+<li><p>Your macro transforms the AST as needed</p></li>
+<li><p>The transformed code then goes through normal CPS transformation</p></li>
+</ol>
+<p>This also works with direct style (<code class="docutils literal notranslate"><span class="pre">CpsDirect[F]</span></code>) and <code class="docutils literal notranslate"><span class="pre">reify</span></code>/<code class="docutils literal notranslate"><span class="pre">reflect</span></code> syntax.</p>
+</section>
+<section id="the-context-parameter">
+<h2>The Context Parameter<a class="headerlink" href="#the-context-parameter" title="Permalink to this heading">¶</a></h2>
+<p>The preprocessor receives the monad context as <code class="docutils literal notranslate"><span class="pre">ctx</span></code>.
+This lets you generate code that uses context operations:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// Your preprocessor can generate code like:</span>
+<span class="p">&#39;{</span><span class="w"> </span><span class="n">$ctx</span><span class="p">.</span><span class="n">someOperation</span><span class="p">(</span><span class="n">$originalExpr</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<p>For example, a durable execution monad might cache values:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// Generated code uses ctx.cached(...)</span>
+<span class="kd">val</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">cached</span><span class="p">(</span><span class="n">stepIndex</span><span class="p">,</span><span class="w"> </span><span class="n">valIndex</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">originalComputation</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="use-cases">
+<h2>Use Cases<a class="headerlink" href="#use-cases" title="Permalink to this heading">¶</a></h2>
+<p><strong>Tracing/Logging</strong>: Insert logging calls around expressions (shown above).</p>
+<p><strong>Durable Execution</strong>: Cache every <code class="docutils literal notranslate"><span class="pre">val</span></code> so computations can be replayed after failures.
+See <a class="reference external" href="https://github.com/rssh/durable-monad"><strong>durable-monad</strong></a> for a complete implementation.</p>
+<p><strong>Profiling</strong>: Wrap expressions with timing measurements.</p>
+<p><strong>STM (Software Transactional Memory)</strong>: Check that all values are immutable.</p>
+<p><strong>Validation</strong>: Insert runtime checks around specific expressions.</p>
+</section>
+<section id="api-reference">
+<h2>API Reference<a class="headerlink" href="#api-reference" title="Permalink to this heading">¶</a></h2>
+<p>See <a class="reference external" href="https://dotty-cps-async.github.io/dotty-cps-async/api/jvm/cps/CpsPreprocessor.html"><code class="docutils literal notranslate"><span class="pre">CpsPreprocessor</span></code></a> in the API documentation.</p>
+<p>If no <code class="docutils literal notranslate"><span class="pre">CpsPreprocessor</span></code> is defined for a monad, async blocks pass through unchanged.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">CpsPreprocessor</a><ul>
+<li><a class="reference internal" href="#tracing-example">Tracing Example</a><ul>
+<li><a class="reference internal" href="#step-1-define-the-preprocessor-given">Step 1: Define the Preprocessor Given</a></li>
+<li><a class="reference internal" href="#step-2-implement-the-macro">Step 2: Implement the Macro</a></li>
+<li><a class="reference internal" href="#step-3-import-and-use">Step 3: Import and Use</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#how-it-works">How It Works</a></li>
+<li><a class="reference internal" href="#the-context-parameter">The Context Parameter</a></li>
+<li><a class="reference internal" href="#use-cases">Use Cases</a></li>
+<li><a class="reference internal" href="#api-reference">API Reference</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="MonadContexts.html"
+                          title="previous chapter">Monad Context</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="RuntimeAwait.html"
+                          title="next chapter">Runtime Await.</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/CpsPreprocessor.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="RuntimeAwait.html" title="Runtime Await."
+             >next</a> |</li>
+        <li class="right" >
+          <a href="MonadContexts.html" title="Monad Context"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.2.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">CpsPreprocessor</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020-2025, Ruslan Shevchenko.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.2.3.
+    </div>
+  </body>
+</html>

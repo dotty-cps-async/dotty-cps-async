@@ -1,0 +1,279 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>CpsPreprocessor - Expression Preprocessing for Async Blocks &#8212; dotty-cps-async 1.2.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/nature.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/s4defs-roles.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">dotty-cps-async 1.2.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">CpsPreprocessor - Expression Preprocessing for Async Blocks</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="cpspreprocessor-expression-preprocessing-for-async-blocks">
+<h1>CpsPreprocessor - Expression Preprocessing for Async Blocks<a class="headerlink" href="#cpspreprocessor-expression-preprocessing-for-async-blocks" title="Permalink to this heading">¶</a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Permalink to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">CpsPreprocessor[F[_],</span> <span class="pre">C</span> <span class="pre">&lt;:</span> <span class="pre">CpsMonadContext[F]]</span></code> is a typeclass that allows monads to transform expressions inside <code class="docutils literal notranslate"><span class="pre">async</span></code> blocks before CPS (Continuation-Passing Style) transformation occurs. This enables monad-specific AST transformations such as:</p>
+<ul class="simple">
+<li><p><strong>Durable monad</strong>: Wrap all <code class="docutils literal notranslate"><span class="pre">val</span></code> definitions with caching calls for replay-based execution</p></li>
+<li><p><strong>Tracing monad</strong>: Insert trace/logging calls around expressions</p></li>
+<li><p><strong>STM monad</strong>: Add savepoint markers for transactional memory</p></li>
+</ul>
+</section>
+<section id="api">
+<h2>API<a class="headerlink" href="#api" title="Permalink to this heading">¶</a></h2>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">package</span><span class="w"> </span><span class="n">cps</span>
+
+<span class="k">trait</span><span class="w"> </span><span class="nc">CpsPreprocessor</span><span class="p">[</span><span class="nc">F</span><span class="p">[</span><span class="n">_</span><span class="p">],</span><span class="w"> </span><span class="nc">C</span><span class="w"> </span><span class="o">&lt;:</span><span class="w"> </span><span class="nc">CpsMonadContext</span><span class="p">[</span><span class="nc">F</span><span class="p">]]:</span><span class="w"></span>
+<span class="w">  </span><span class="cm">/**</span>
+<span class="cm">   * Transform the body of an async block before CPS transformation.</span>
+<span class="cm">   *</span>
+<span class="cm">   * @param body The body expression inside the async block</span>
+<span class="cm">   * @param ctx The monad context, passed explicitly for use in generated code</span>
+<span class="cm">   * @tparam A The result type of the body expression</span>
+<span class="cm">   * @return The transformed body expression</span>
+<span class="cm">   */</span><span class="w"></span>
+<span class="w">  </span><span class="k">inline</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="k">inline</span><span class="w"> </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="k">inline</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">C</span><span class="p">):</span><span class="w"> </span><span class="nc">A</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="usage">
+<h2>Usage<a class="headerlink" href="#usage" title="Permalink to this heading">¶</a></h2>
+<section id="defining-a-preprocessor">
+<h3>Defining a Preprocessor<a class="headerlink" href="#defining-a-preprocessor" title="Permalink to this heading">¶</a></h3>
+<p>A preprocessor is typically implemented as a macro that transforms the AST. The context is passed explicitly so the macro can directly reference it in generated code:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">import</span><span class="w"> </span><span class="nn">cps</span><span class="p">.</span><span class="n">*</span>
+<span class="k">import</span><span class="w"> </span><span class="nn">scala</span><span class="p">.</span><span class="nn">quoted</span><span class="p">.</span><span class="n">*</span>
+
+<span class="k">given</span><span class="w"> </span><span class="nc">CpsPreprocessor</span><span class="p">[</span><span class="nc">MyMonad</span><span class="p">,</span><span class="w"> </span><span class="nc">MyContext</span><span class="p">]</span><span class="w"> </span><span class="k">with</span><span class="w"></span>
+<span class="w">  </span><span class="k">inline</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="k">inline</span><span class="w"> </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="k">inline</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">MyContext</span><span class="p">):</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="p">${</span><span class="w"> </span><span class="nc">MyPreprocessorMacro</span><span class="p">.</span><span class="n">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">MyContext</span><span class="p">](</span><span class="ss">&#39;body</span><span class="p">,</span><span class="w"> </span><span class="ss">&#39;ctx</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+
+<span class="k">object</span><span class="w"> </span><span class="nc">MyPreprocessorMacro</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">:</span><span class="w"> </span><span class="nc">Type</span><span class="p">,</span><span class="w"> </span><span class="nc">C</span><span class="w"> </span><span class="o">&lt;:</span><span class="w"> </span><span class="nc">CpsMonadContext</span><span class="p">[</span><span class="nc">MyMonad</span><span class="p">]:</span><span class="w"> </span><span class="nc">Type</span><span class="p">](</span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">],</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">C</span><span class="p">])(</span><span class="k">using</span><span class="w"> </span><span class="nc">Quotes</span><span class="p">):</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="k">import</span><span class="w"> </span><span class="nn">quotes</span><span class="p">.</span><span class="nn">reflect</span><span class="p">.</span><span class="n">*</span>
+<span class="w">    </span><span class="c1">// Transform the AST using $ctx directly</span>
+<span class="w">    </span><span class="p">&#39;{</span><span class="w"> </span><span class="n">$ctx</span><span class="p">.</span><span class="n">someOperation</span><span class="p">(</span><span class="n">$body</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="how-it-works">
+<h3>How It Works<a class="headerlink" href="#how-it-works" title="Permalink to this heading">¶</a></h3>
+<p>The preprocessor is applied automatically in two transformation paths:</p>
+<section id="macro-path-async-f">
+<h4>1. Macro Path (<code class="docutils literal notranslate"><span class="pre">async[F]</span> <span class="pre">{</span> <span class="pre">}</span></code>)<a class="headerlink" href="#macro-path-async-f" title="Permalink to this heading">¶</a></h4>
+<p>When using <code class="docutils literal notranslate"><span class="pre">async[F]</span> <span class="pre">{</span> <span class="pre">body</span> <span class="pre">}</span></code>, the preprocessor is applied inside <code class="docutils literal notranslate"><span class="pre">transformContextLambdaImpl</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>async[MyMonad] { body }
+       ↓
+extractLambda gets (params, body) where params contains ctx
+       ↓
+Summon CpsPreprocessor[MyMonad, C]?
+       ↓ Yes
+preprocessor.preprocess(body)(ctx) → preprocessedBody
+       ↓
+CPS transformation on preprocessedBody
+</pre></div>
+</div>
+</section>
+<section id="direct-style-path-def-foo-using-cpsdirect-f">
+<h4>2. Direct Style Path (<code class="docutils literal notranslate"><span class="pre">def</span> <span class="pre">foo(using</span> <span class="pre">CpsDirect[F])</span></code>)<a class="headerlink" href="#direct-style-path-def-foo-using-cpsdirect-f" title="Permalink to this heading">¶</a></h4>
+<p>For direct style functions, the preprocessor is applied in the compiler plugin’s first phase (before macro inlining):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>def foo(using ctx: CpsDirect[MyMonad]): T = body
+       ↓
+PhaseSelectAndGenerateShiftedMethods detects CpsDirect function
+       ↓
+Summon CpsPreprocessor[MyMonad, CpsDirect[MyMonad]]?
+       ↓ Yes
+Wrap: body → preprocessor.preprocess(body)(ctx)
+       ↓
+Inlining phase expands the preprocessor macro
+       ↓
+PhaseCps performs CPS transformation on preprocessedBody
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+<section id="example-durable-monad-preprocessor">
+<h2>Example: Durable Monad Preprocessor<a class="headerlink" href="#example-durable-monad-preprocessor" title="Permalink to this heading">¶</a></h2>
+<p>The Durable monad needs to cache every <code class="docutils literal notranslate"><span class="pre">val</span></code> definition for replay-based execution:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// Source code</span>
+<span class="n">async</span><span class="p">[</span><span class="nc">Durable</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">compute</span><span class="p">()</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">httpGet</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="w"></span>
+<span class="w">  </span><span class="n">await</span><span class="p">(</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">.</span><span class="n">hour</span><span class="p">))</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">process</span><span class="p">(</span><span class="n">b</span><span class="p">)</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="c1">// After preprocessing (conceptual)</span>
+<span class="n">async</span><span class="p">[</span><span class="nc">Durable</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">cached</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">compute</span><span class="p">()</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">cached</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">httpGet</span><span class="p">(</span><span class="n">url</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">await</span><span class="p">(</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">.</span><span class="n">hour</span><span class="p">))</span><span class="w">  </span><span class="c1">// step boundary increments step index</span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">cached</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">process</span><span class="p">(</span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Implementation sketch:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">given</span><span class="w"> </span><span class="nc">CpsPreprocessor</span><span class="p">[</span><span class="nc">Durable</span><span class="p">,</span><span class="w"> </span><span class="nc">DurableContext</span><span class="p">]</span><span class="w"> </span><span class="k">with</span><span class="w"></span>
+<span class="w">  </span><span class="k">inline</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="k">inline</span><span class="w"> </span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="k">inline</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">DurableContext</span><span class="p">):</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="p">${</span><span class="w"> </span><span class="nc">DurablePreprocessor</span><span class="p">.</span><span class="n">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="ss">&#39;body</span><span class="p">,</span><span class="w"> </span><span class="ss">&#39;ctx</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+
+<span class="k">object</span><span class="w"> </span><span class="nc">DurablePreprocessor</span><span class="p">:</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">impl</span><span class="p">[</span><span class="nc">A</span><span class="p">:</span><span class="w"> </span><span class="nc">Type</span><span class="p">](</span><span class="n">body</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">],</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">DurableContext</span><span class="p">])(</span><span class="k">using</span><span class="w"> </span><span class="nc">Quotes</span><span class="p">):</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="k">import</span><span class="w"> </span><span class="nn">quotes</span><span class="p">.</span><span class="nn">reflect</span><span class="p">.</span><span class="n">*</span>
+
+<span class="w">    </span><span class="c1">// Walk AST and transform:</span>
+<span class="w">    </span><span class="c1">// 1. val x = rhs  →  val x = $ctx.cached(step, idx) { rhs }</span>
+<span class="w">    </span><span class="c1">// 2. if (cond)    →  if ($ctx.cached(step, idx) { cond })</span>
+<span class="w">    </span><span class="c1">// 3. Detect await(...) as step boundary</span>
+
+<span class="w">    </span><span class="n">transformTree</span><span class="p">(</span><span class="n">body</span><span class="p">.</span><span class="n">asTerm</span><span class="p">,</span><span class="w"> </span><span class="n">ctx</span><span class="p">).</span><span class="n">asExprOf</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"></span>
+
+<span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">transformTree</span><span class="p">(</span><span class="n">tree</span><span class="p">:</span><span class="w"> </span><span class="nc">Term</span><span class="p">,</span><span class="w"> </span><span class="n">ctx</span><span class="p">:</span><span class="w"> </span><span class="nc">Expr</span><span class="p">[</span><span class="nc">DurableContext</span><span class="p">])(</span><span class="k">using</span><span class="w"> </span><span class="nc">Quotes</span><span class="p">):</span><span class="w"> </span><span class="nc">Term</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="c1">// AST transformation logic</span>
+<span class="w">    </span><span class="o">???</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="design-notes">
+<h2>Design Notes<a class="headerlink" href="#design-notes" title="Permalink to this heading">¶</a></h2>
+<section id="explicit-context-parameter">
+<h3>Explicit Context Parameter<a class="headerlink" href="#explicit-context-parameter" title="Permalink to this heading">¶</a></h3>
+<p>The monad context is passed explicitly to <code class="docutils literal notranslate"><span class="pre">preprocess</span></code> as the <code class="docutils literal notranslate"><span class="pre">ctx</span></code> parameter. This allows the preprocessor macro to directly reference the context in generated code:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="c1">// Preprocessor can generate code like:</span>
+<span class="p">&#39;{</span><span class="w"> </span><span class="n">$ctx</span><span class="p">.</span><span class="n">cached</span><span class="p">(</span><span class="n">stepIndex</span><span class="p">,</span><span class="w"> </span><span class="n">valIndex</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">$originalExpression</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="type-parameters">
+<h3>Type Parameters<a class="headerlink" href="#type-parameters" title="Permalink to this heading">¶</a></h3>
+<p>The preprocessor has two type parameters:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">F[_]</span></code> - The monad type (e.g., <code class="docutils literal notranslate"><span class="pre">Future</span></code>, <code class="docutils literal notranslate"><span class="pre">IO</span></code>, <code class="docutils literal notranslate"><span class="pre">Durable</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">C</span> <span class="pre">&lt;:</span> <span class="pre">CpsMonadContext[F]</span></code> - The context type (e.g., <code class="docutils literal notranslate"><span class="pre">CpsDirect[Future]</span></code>, <code class="docutils literal notranslate"><span class="pre">DurableContext</span></code>)</p></li>
+</ul>
+<p>This allows different preprocessors for different context types of the same monad, enabling context-specific transformations. For example, a <code class="docutils literal notranslate"><span class="pre">DurableContext</span></code> might have a <code class="docutils literal notranslate"><span class="pre">cached</span></code> method that a generic <code class="docutils literal notranslate"><span class="pre">CpsMonadContext[Durable]</span></code> doesn’t have.</p>
+</section>
+<section id="macro-vs-plugin">
+<h3>Macro vs Plugin<a class="headerlink" href="#macro-vs-plugin" title="Permalink to this heading">¶</a></h3>
+<p>The preprocessor uses an <code class="docutils literal notranslate"><span class="pre">inline</span> <span class="pre">def</span></code> with a macro implementation. This works for both paths:</p>
+<ul class="simple">
+<li><p><strong>Macro path</strong>: The preprocessor macro is expanded during macro expansion</p></li>
+<li><p><strong>Plugin path</strong>: The plugin wraps the body with <code class="docutils literal notranslate"><span class="pre">preprocessor.preprocess(body)(ctx)</span></code>, and the inline macro is expanded during the Inlining compiler phase (before CPS transformation in PhaseCps)</p></li>
+</ul>
+</section>
+<section id="no-preprocessor-case">
+<h3>No Preprocessor Case<a class="headerlink" href="#no-preprocessor-case" title="Permalink to this heading">¶</a></h3>
+<p>If no <code class="docutils literal notranslate"><span class="pre">CpsPreprocessor[F,</span> <span class="pre">C]</span></code> is defined for a monad and context type, the body passes through unchanged to CPS transformation. This is the default behavior for most monads.</p>
+</section>
+</section>
+<section id="related">
+<h2>Related<a class="headerlink" href="#related" title="Permalink to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference external" href="../MonadContexts.rst">CpsMonad</a> - The base monad typeclass</p></li>
+<li><p><a class="reference external" href="../AutomaticColoring.rst">Automatic Coloring</a> - How CPS transformation works</p></li>
+<li><p><a class="reference external" href="../BasicUsage.rst">Direct Style</a> - Using <code class="docutils literal notranslate"><span class="pre">CpsDirect[F]</span></code> for direct style async code</p></li>
+</ul>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">CpsPreprocessor - Expression Preprocessing for Async Blocks</a><ul>
+<li><a class="reference internal" href="#overview">Overview</a></li>
+<li><a class="reference internal" href="#api">API</a></li>
+<li><a class="reference internal" href="#usage">Usage</a><ul>
+<li><a class="reference internal" href="#defining-a-preprocessor">Defining a Preprocessor</a></li>
+<li><a class="reference internal" href="#how-it-works">How It Works</a><ul>
+<li><a class="reference internal" href="#macro-path-async-f">1. Macro Path (<code class="docutils literal notranslate"><span class="pre">async[F]</span> <span class="pre">{</span> <span class="pre">}</span></code>)</a></li>
+<li><a class="reference internal" href="#direct-style-path-def-foo-using-cpsdirect-f">2. Direct Style Path (<code class="docutils literal notranslate"><span class="pre">def</span> <span class="pre">foo(using</span> <span class="pre">CpsDirect[F])</span></code>)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a class="reference internal" href="#example-durable-monad-preprocessor">Example: Durable Monad Preprocessor</a></li>
+<li><a class="reference internal" href="#design-notes">Design Notes</a><ul>
+<li><a class="reference internal" href="#explicit-context-parameter">Explicit Context Parameter</a></li>
+<li><a class="reference internal" href="#type-parameters">Type Parameters</a></li>
+<li><a class="reference internal" href="#macro-vs-plugin">Macro vs Plugin</a></li>
+<li><a class="reference internal" href="#no-preprocessor-case">No Preprocessor Case</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#related">Related</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/design/CpsPreprocessor.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">dotty-cps-async 1.2.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">CpsPreprocessor - Expression Preprocessing for Async Blocks</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020-2025, Ruslan Shevchenko.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.2.3.
+    </div>
+  </body>
+</html>
