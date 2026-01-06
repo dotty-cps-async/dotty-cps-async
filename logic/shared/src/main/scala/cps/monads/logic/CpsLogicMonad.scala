@@ -135,6 +135,22 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     }
   }
 
+  /** get the first n values of computation, discarding all other.
+    * @param a - computation to limit
+    * @param n - how many values to take
+    * @tparam A
+    * @return
+    */
+  def limit[A](a: M[A], n: Int): M[A] = {
+    if (n <= 0) mzero
+    else flatMap(msplit(a)) { sc =>
+      sc match
+        case None => mzero
+        case Some((ta, sa)) =>
+          mplus(fromTry(ta), limit(sa, n - 1))
+    }
+  }
+
   def mObserveOne[A](ma: M[A]): Observer[Option[A]] =
     observerCpsMonad.map(fsplit(ma)) {
       case None          => None
@@ -384,6 +400,14 @@ extension [M[_], A](ma: M[A])(using m: CpsLogicMonad[M])
     */
   def once: M[A] =
     m.once(ma)
+
+  /** retrieve only first n values of computation.
+    * @param n - how many values to take
+    * @return - stream, which contains only first n values of <code> ma </code>
+    * @see cps.monads.logic.CpsLogicMonad.limit
+    */
+  def limit(n: Int): M[A] =
+    m.limit(ma, n)
 
   /** If <code> ma </code> is note empty, then run <code> thenp </code> on it else <code> elsep </code>,
     * @param thenp

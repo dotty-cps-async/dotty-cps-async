@@ -48,6 +48,51 @@ class DefaultLogicMonadBasicTest {
     assert(m2.toLazyList.isEmpty)
   }
 
+  @Test
+  def testBasicLimit(): Unit = {
+    val m1 = LogicStream.fromCollection(List(1, 2, 3, 4, 5))
+    val m2 = m1.limit(3)
+    assert(m2.toLazyList.toSeq == Seq(1, 2, 3))
+  }
+
+  @Test
+  def testLimitEmpty(): Unit = {
+    val m1 = LogicStream.fromCollection(List.empty[Int])
+    val m2 = m1.limit(3)
+    assert(m2.toLazyList.isEmpty)
+  }
+
+  @Test
+  def testLimitLargerThanSize(): Unit = {
+    val m1 = LogicStream.fromCollection(List(1, 2))
+    val m2 = m1.limit(10)
+    assert(m2.toLazyList.toSeq == Seq(1, 2))
+  }
+
+  @Test
+  def testLimitZero(): Unit = {
+    val m1 = LogicStream.fromCollection(List(1, 2, 3))
+    val m2 = m1.limit(0)
+    assert(m2.toLazyList.isEmpty)
+  }
+
+  @Test
+  def testLimitOne(): Unit = {
+    val m1 = LogicStream.fromCollection(List(1, 2, 3))
+    val m2 = m1.limit(1)
+    assert(m2.toLazyList.toSeq == Seq(1))
+    // should behave like once
+    val m3 = once(m1)
+    assert(m2.toLazyList.toSeq == m3.toLazyList.toSeq)
+  }
+
+  @Test
+  def testLimitWithInterleave(): Unit = {
+    val m1 = LogicStream.fromCollection(List(1, 2, 3))
+    val m2 = LogicStream.fromCollection(List(4, 5, 6))
+    val m3 = (m1 | m2).limit(4)
+    assert(m3.toLazyList.toSeq == Seq(1, 4, 2, 5))
+  }
 
   @Test
   def testEmpty() = {
