@@ -7,7 +7,7 @@ import scala.concurrent._
 
 import cps._
 
-given CpsThrowMonad[TailRec] with CpsThrowMonadInstanceContext[TailRec] with {
+given CpsTryMonad[TailRec] with CpsTryMonadInstanceContext[TailRec] with {
 
   def pure[A](a: A): TailRec[A] =
     done(a)
@@ -19,6 +19,12 @@ given CpsThrowMonad[TailRec] with CpsThrowMonadInstanceContext[TailRec] with {
     fa.flatMap(f)
 
   def error[A](e: Throwable): TailRec[A] =
-    done(throw e)
+    tailcall(done(throw e))
+
+  def flatMapTry[A, B](fa: TailRec[A])(f: Try[A] => TailRec[B]): TailRec[B] =
+    tailcall {
+      val tryResult = Try(fa.result)
+      f(tryResult)
+    }
 
 }
