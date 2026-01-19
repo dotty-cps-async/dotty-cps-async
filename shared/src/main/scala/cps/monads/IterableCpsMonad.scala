@@ -48,6 +48,24 @@ class IterableCpsMonad[C[x] <: IterableOnce[x]](iterableFactory: IterableFactory
     throw e
   }
 
+  /** Stack-safe implementation using explicit pending stack */
+  override def tailRecM[A, B](a: A)(f: A => C[Either[A, B]]): C[B] = {
+    val builder = iterableFactory.newBuilder[B]
+    var pending = List(a)
+    while (pending.nonEmpty) {
+      val current = pending.head
+      pending = pending.tail
+      val it = f(current).iterator
+      while (it.hasNext) {
+        it.next() match {
+          case Left(a1) => pending = a1 :: pending
+          case Right(b) => builder.addOne(b)
+        }
+      }
+    }
+    builder.result
+  }
+
 }
 
 inline given iterableCpsMonad[C[x] <: Iterable[x]]: CpsThrowMonad[C] = {
