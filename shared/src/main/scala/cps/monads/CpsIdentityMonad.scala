@@ -21,6 +21,15 @@ object CpsIdentityMonad extends CpsTryMonad[CpsIdentity] with CpsTryMonadInstanc
 
   override def flatMapTry[A, B](fa: A)(f: Try[A] => B): B = f(Success(fa))
 
+  /** Stack-safe implementation using while loop */
+  override def tailRecM[A, B](a: A)(f: A => Either[A, B]): B = {
+    var current: Either[A, B] = Left(a)
+    while (current.isLeft) {
+      current = f(current.left.get)
+    }
+    current.right.get
+  }
+
   override def toString = "CpsIdentityMonad"
 
 }
