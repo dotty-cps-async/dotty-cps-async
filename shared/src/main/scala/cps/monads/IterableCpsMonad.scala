@@ -63,7 +63,7 @@ class IterableCpsMonad[C[x] <: IterableOnce[x]](iterableFactory: IterableFactory
         }
       }
     }
-    builder.result()
+    builder.result
   }
 
 }
