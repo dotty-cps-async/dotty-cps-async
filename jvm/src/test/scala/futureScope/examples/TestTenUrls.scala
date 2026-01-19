@@ -27,11 +27,11 @@ class TestTenUrls {
 
     class NetworkApiMock(records:Map[String,FetchResult]) extends TenUrls.NetworkApi {
 
-      
+
       override def fetch(url: String)(using ctx: FutureScopeContext): Future[String] = async[Future].in(Scope.child(ctx)) {
         records.get(url) match
           case Some(record) =>
-            record match 
+            record match
               case FetchResult.Success(data, delay) =>
                await(FutureScope.spawnDelay(delay))
                data
@@ -39,12 +39,12 @@ class TestTenUrls {
                throw new IOException(msg)
               case FetchResult.InfiniteWait =>
                val p = Promise[String]
-               await(p.future)  
+               await(p.future)
           case None =>
-              throw new IOException(s"Mock URL not found $url")      
+              throw new IOException(s"Mock URL not found $url")
       }
-   
-   
+
+
     }
 
 
@@ -63,6 +63,7 @@ class TestTenUrls {
     }
 
     @Test def testRandomBehavious() = {
+      FutureScopeContext.debugCancellation = true
       val random = new Random(1)
       val urlsData = (for(i <- 1 to 100) yield {
            val p = random.nextDouble()
@@ -72,7 +73,7 @@ class TestTenUrls {
              else if (p < 0.8888) then
                 FetchResult.Failure(s"p=$p")
              else
-                FetchResult.InfiniteWait   
+                FetchResult.InfiniteWait
            }
            (i.toString, fetchResult)
       } ).toMap
@@ -83,17 +84,25 @@ class TestTenUrls {
           val first10 = await(TenUrls.readFirstN(mockApi,urls,10))
           assert(first10.length == 10)
       }
+      // With ~57 success URLs (0-100ms each), getting 10 should complete in <100ms.
+      // Timeout (5s) should never trigger. If it does, it's a bug worth investigating.
+      val nSuccess = urlsData.count(_._2.isInstanceOf[FetchResult.Success])
+      val nFailure = urlsData.count(_._2.isInstanceOf[FetchResult.Failure])
+      val nInfinite = urlsData.count(_._2 == FetchResult.InfiniteWait)
       FutureCompleter(f.transform{
         case Success(x) => Success(x)
-        case Failure(ex: TimeoutException) =>
-           val nInfinite = urlsData.filter(_._2 == FetchResult.InfiniteWait).size
-           println(s"nInfinite=${nInfinite}")
-           assert(nInfinite > 90)
-           Success(())
-        case Failure(ex) => Failure(ex)
-      })
+        case Failure(ex) =>
+           // Diagnostic info for debugging unexpected failures (race condition?)
+           System.err.println("=== TestTenUrls.testRandomBehavious failed ===")
+           System.err.println(s"Exception type: ${ex.getClass.getName}")
+           System.err.println(s"Exception message: ${ex.getMessage}")
+           System.err.println(s"Exception cause: ${Option(ex.getCause).map(c => s"${c.getClass.getName}: ${c.getMessage}").getOrElse("null")}")
+           System.err.println(s"urlsData distribution: success=$nSuccess, failure=$nFailure, infinite=$nInfinite")
+           System.err.println("=== end diagnostic info ===")
+           Failure(ex)
+      }.andThen { _ => FutureScopeContext.debugCancellation = false })
     }
 
- 
+
 
 }

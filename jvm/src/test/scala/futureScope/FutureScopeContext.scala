@@ -115,6 +115,12 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
 
 
   def cancel(ex: ScopeCancellationException): CancellationResult = {
+    if (FutureScopeContext.debugCancellation) {
+      val nCancellable = cancellableFutures.size()
+      val nNonCancellable = nonCancellables.size()
+      val stack = Thread.currentThread().getStackTrace.take(10).map(_.toString).mkString("\n    ")
+      System.err.println(s"[FutureScopeContext.cancel] ex=${ex.getMessage}, cause=${Option(ex.getCause).map(_.getClass.getName)}, state=${stateRef.get()}, cancellables=$nCancellable, nonCancellables=$nNonCancellable\n    $stack")
+    }
 
     given ExecutionContext = ec
 
@@ -345,6 +351,9 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
 }
 
 object FutureScopeContext {
+
+   // Set to true to log all cancel() calls for debugging
+   var debugCancellation: Boolean = false
 
    object StateFlags: 
      final val Active = 1
