@@ -75,6 +75,19 @@ class EitherCpsTryMonad[E: ThrowableMapping]
         }
   }
 
+  /** Stack-safe implementation using tail recursion */
+  override def tailRecM[A, B](a: A)(f: A => Either[E, Either[A, B]]): Either[E, B] = {
+    @annotation.tailrec
+    def loop(current: A): Either[E, B] = {
+      handleRun(f(current)) match {
+        case Left(e) => Left(e)
+        case Right(Left(a1)) => loop(a1)
+        case Right(Right(b)) => Right(b)
+      }
+    }
+    loop(a)
+  }
+
 }
 
 given eitherTryCpsMonad[E: ThrowableMapping]: CpsTryMonad[[A] =>> Either[E, A]] =
@@ -100,6 +113,19 @@ class EitherCpsMonad[E](using ev: NotGiven[ThrowableMapping[E]])
   }
 
   override def error[A](e: Throwable): Either[E, A] = throw e
+
+  /** Stack-safe implementation using tail recursion */
+  override def tailRecM[A, B](a: A)(f: A => Either[E, Either[A, B]]): Either[E, B] = {
+    @annotation.tailrec
+    def loop(current: A): Either[E, B] = {
+      f(current) match {
+        case Left(e) => Left(e)
+        case Right(Left(a1)) => loop(a1)
+        case Right(Right(b)) => Right(b)
+      }
+    }
+    loop(a)
+  }
 
 }
 

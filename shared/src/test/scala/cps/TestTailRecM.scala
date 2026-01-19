@@ -3,7 +3,7 @@ package cps
 import org.junit.{Test, Ignore}
 import org.junit.Assert._
 
-import cps.monads.{CpsIdentity, CpsIdentityMonad, IterableCpsMonad}
+import cps.monads.{CpsIdentity, CpsIdentityMonad, IterableCpsMonad, EitherCpsMonad, EitherCpsTryMonad, ThrowableMapping}
 
 class TestTailRecM:
 
@@ -100,4 +100,58 @@ class TestTailRecM:
       else List(Left(n - 1))
     }
     assertEquals(List(), result)
+
+  // Tests for EitherCpsMonad
+  import scala.util.NotGiven
+  val eitherMonad = new EitherCpsMonad[String](using NotGiven.default)
+
+  @Test def testEitherTailRecMSimple(): Unit =
+    val result = eitherMonad.tailRecM[Int, Int](5) { n =>
+      if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Right(0), result)
+
+  @Test def testEitherTailRecMWithError(): Unit =
+    val result = eitherMonad.tailRecM[Int, Int](5) { n =>
+      if n == 3 then Left("error at 3")
+      else if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Left("error at 3"), result)
+
+  @Test def testEitherTailRecMStackSafety(): Unit =
+    val depth = 100000
+    val result = eitherMonad.tailRecM[Int, Int](depth) { n =>
+      if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Right(0), result)
+
+  // Tests for EitherCpsTryMonad (with Throwable error type)
+  val eitherTryMonad = new EitherCpsTryMonad[RuntimeException]
+
+  @Test def testEitherTryTailRecMSimple(): Unit =
+    val result = eitherTryMonad.tailRecM[Int, Int](5) { n =>
+      if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Right(0), result)
+
+  @Test def testEitherTryTailRecMWithError(): Unit =
+    val ex = new RuntimeException("error at 3")
+    val result = eitherTryMonad.tailRecM[Int, Int](5) { n =>
+      if n == 3 then Left(ex)
+      else if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Left(ex), result)
+
+  @Test def testEitherTryTailRecMStackSafety(): Unit =
+    val depth = 100000
+    val result = eitherTryMonad.tailRecM[Int, Int](depth) { n =>
+      if n <= 0 then Right(Right(n))
+      else Right(Left(n - 1))
+    }
+    assertEquals(Right(0), result)
 
