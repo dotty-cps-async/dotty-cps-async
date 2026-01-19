@@ -55,6 +55,23 @@ trait CpsMonad[F[_]] {
   def flatten[T](ffa: F[F[T]]): F[T] =
     flatMap(ffa)(x => x)
 
+  /**
+   * Stack-safe monadic recursion.
+   *
+   * Iterates `f` until it returns `Right(b)`.
+   * - `Left(a1)` means continue with new state `a1`
+   * - `Right(b)` means done with result `b`
+   *
+   * The default implementation uses `flatMap` recursively, which is stack-safe
+   * for monads with internal trampolining (TailRec, IO, Future, etc.)
+   * but NOT for identity-like monads. Override for those cases.
+   */
+  def tailRecM[A, B](a: A)(f: A => F[Either[A, B]]): F[B] =
+    flatMap(f(a)) {
+      case Left(a1) => tailRecM(a1)(f)
+      case Right(b) => pure(b)
+    }
+
 }
 
 object CpsMonad {
