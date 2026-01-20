@@ -15,6 +15,32 @@ trait LazyListCpsLogicMonadBase extends CpsSyncLogicMonad[LazyList] {
   def flatMap[A, B](fa: LazyList[A])(f: A => LazyList[B]): LazyList[B] =
     fa.flatMap(f)
 
+  /**
+   * Stack-safe tailRecM implementation for LazyList.
+   *
+   * Uses an explicit pending stack to avoid JVM stack overflow while
+   * preserving laziness through LazyList.cons/#::.
+   */
+  override def tailRecM[A, B](a: A)(f: A => LazyList[Either[A, B]]): LazyList[B] = {
+    // Pending items: Left(a) means we need to call f(a), Right(it) is an iterator to process
+    def go(pending: List[Either[A, Iterator[Either[A, B]]]]): LazyList[B] =
+      pending match {
+        case Nil => LazyList.empty
+        case Left(a1) :: tail =>
+          go(Right(f(a1).iterator) :: tail)
+        case Right(it) :: tail =>
+          if (it.hasNext) {
+            it.next() match {
+              case Left(a1) => go(Left(a1) :: Right(it) :: tail)
+              case Right(b) => b #:: go(Right(it) :: tail)
+            }
+          } else {
+            go(tail)
+          }
+      }
+    go(List(Left(a)))
+  }
+
   override def error[A](e: Throwable): LazyList[A] = {
     LazyList.cons(throw e, LazyList.empty[A])
   }
