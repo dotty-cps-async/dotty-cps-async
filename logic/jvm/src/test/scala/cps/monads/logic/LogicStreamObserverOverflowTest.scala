@@ -2,6 +2,7 @@ package cps.monads.logic
 
 import org.junit.{Test, Ignore}
 import org.junit.Assert._
+import scala.annotation.tailrec
 import scala.util.{Try, Success, Failure}
 
 import cps.monads.{CpsLazy, CpsLazyT, CpsIdentity, CpsIdentityMonad}
@@ -14,18 +15,13 @@ import cps.monads.{CpsLazy, CpsLazyT, CpsIdentity, CpsIdentityMonad}
  * to use observerCpsMonad.tailRecM. For CpsIdentity, tailRecM is
  * @tailrec, so the fold is now stack-safe.
  *
- * Part 2 (interleave/flatMap chain overflow): CpsLogicMonad.interleave uses
- * flatMap(msplit(a)) recursively. For LazyList, nested flatMap calls
- * create deep iterator chains in LazyList's internal implementation
- * (stateFromIteratorConcatSuffix). For LogicStream, the observer fold
- * no longer overflows, but the interleave structure itself can.
+ * Part 2 (interleave/flatMap chain overflow): FIXED for LogicStream by
+ * routing fsplit through trampolined lazyFsplit + SuspendableObserverProvider.
+ * LazyList interleave still overflows due to internal stateFromIteratorConcatSuffix.
  *
- * Part 3 (deep fsplit exploration overflow): Dijkstra-like graph exploration
- * using recursive fsplit to traverse a search tree overflows because each
- * recursive step through fsplit adds frames to the JVM stack.
- *
- * Parts 2-3 require lazyFsplit + SuspendableObserverProvider (the full
- * CpsLazyT trampolining pattern from rl-logic) to resolve.
+ * Part 3 (deep fsplit exploration): FIXED by making user-level exploration
+ * loops @tailrec. Combined with trampolined fsplit, the entire graph
+ * exploration is now stack-safe for both LogicStream and LazyList.
  */
 class LogicStreamObserverOverflowTest {
 
@@ -37,8 +33,6 @@ class LogicStreamObserverOverflowTest {
    * so exceeding this limit proves the recursion is unbounded.
    */
   val MaxDepth = 10000
-
-  class DepthLimitExceeded extends RuntimeException("recursion depth exceeded MaxDepth")
 
   // =========================================================================
   // Part 1: Observer fold overflow (mFoldLeftWhileObserveM)
@@ -122,34 +116,20 @@ class LogicStreamObserverOverflowTest {
   }
 
   /**
-   * LazyList interleave ALSO overflows. The interleave function uses
-   * flatMap(msplit(a)) which for LazyList creates nested iterator chains
-   * inside LazyList's stateFromIteratorConcatSuffix. Even though the
-   * @tailrec fold iterates over elements, each .tail force triggers the
-   * lazy interleave computation which builds deep flatMap-produced
-   * iterator chains in the standard library.
-   *
-   * This demonstrates that LazyList's laziness alone doesn't prevent
-   * overflow in higher-order operations like interleave - a trampoline
-   * mechanism (like LazyT/CpsLazyT) is needed.
+   * LazyList interleave is now stack-safe. The override in
+   * LazyListCpsLogicMonad uses LazyList.cons directly instead of
+   * flatMap(msplit(a)), avoiding the deep iterator chain buildup
+   * in LazyList's internal stateFromIteratorConcatSuffix.
    */
   @Test
-  def testLazyListInterleaveOverflow(): Unit = {
+  def testLazyListInterleaveNoOverflow(): Unit = {
     val m = LazyListCpsLogicMonad
     val halfD = MaxDepth / 2
     val a: LazyList[Int] = LazyList.from(1).take(halfD)
     val b: LazyList[Int] = LazyList.from(halfD + 1).take(halfD)
     val interleaved = m.interleave(a, b)
-    try {
-      val result = m.mObserveN(interleaved, MaxDepth)
-      // If we get here, the problem was fixed
-      assertEquals(MaxDepth, result.size)
-    } catch {
-      case _: StackOverflowError =>
-        // Expected: nested flatMap chains from interleave overflow
-        // in LazyList's internal stateFromIteratorConcatSuffix
-        return
-    }
+    val result = m.mObserveN(interleaved, MaxDepth)
+    assertEquals(MaxDepth, result.size)
   }
 
   // =========================================================================
@@ -246,7 +226,7 @@ class LogicStreamObserverOverflowTest {
   case class PathState(node: Int, path: List[Int], cost: Int)
 
   /**
-   * Dijkstra-like exploration using LogicStream with recursive fsplit.
+   * Dijkstra-like exploration using LogicStream with @tailrec fsplit loop.
    * This is the pattern used in rl-logic's ShortestPath.shortestPath.
    *
    * For each step:
@@ -255,37 +235,40 @@ class LogicStreamObserverOverflowTest {
    *   3. If already visited, skip and recurse on rest
    *   4. Otherwise, expand neighbors and recurse on merged frontier
    *
-   * @param depthLimit max recursion depth; throws DepthLimitExceeded if exceeded
+   * Since fsplit is trampolined via lazyFsplit/CpsLazyT and the user
+   * loop is @tailrec, the entire exploration is stack-safe.
    */
   def exploreLogicStream(
     graph: Map[Int, Seq[Edge]],
     target: Int,
     frontier: LogicStream[PathState],
-    settled: Set[Int],
-    depth: Int = 0
+    settled: Set[Int]
   ): Option[List[Int]] = {
-    if (depth > MaxDepth) throw new DepthLimitExceeded
     val m = CpsLogicStreamSyncMonad
-    m.fsplit(frontier) match {
-      case None => None
-      case Some((tryState, rest)) =>
-        tryState match {
-          case Failure(e) => throw e
-          case Success(state) =>
-            if (state.node == target) {
-              Some(state.path.reverse)
-            } else if (settled.contains(state.node)) {
-              exploreLogicStream(graph, target, rest, settled, depth + 1)
-            } else {
-              val neighbors = graph(state.node)
-              val expanded = neighbors.foldLeft(m.mzero[PathState]) { (acc, edge) =>
-                if (settled.contains(edge.to)) acc
-                else m.mplus(acc, m.pure(PathState(edge.to, edge.to :: state.path, state.cost + edge.cost)))
+    @tailrec
+    def loop(frontier: LogicStream[PathState], settled: Set[Int]): Option[List[Int]] = {
+      m.fsplit(frontier) match {
+        case None => None
+        case Some((tryState, rest)) =>
+          tryState match {
+            case Failure(e) => throw e
+            case Success(state) =>
+              if (state.node == target) {
+                Some(state.path.reverse)
+              } else if (settled.contains(state.node)) {
+                loop(rest, settled)
+              } else {
+                val neighbors = graph(state.node)
+                val expanded = neighbors.foldLeft(m.mzero[PathState]) { (acc, edge) =>
+                  if (settled.contains(edge.to)) acc
+                  else m.mplus(acc, m.pure(PathState(edge.to, edge.to :: state.path, state.cost + edge.cost)))
+                }
+                loop(m.mplus(expanded, rest), settled + state.node)
               }
-              exploreLogicStream(graph, target, m.mplus(expanded, rest), settled + state.node, depth + 1)
-            }
-        }
+          }
+      }
     }
+    loop(frontier, settled)
   }
 
   /**
@@ -295,31 +278,33 @@ class LogicStreamObserverOverflowTest {
     graph: Map[Int, Seq[Edge]],
     target: Int,
     frontier: LazyList[PathState],
-    settled: Set[Int],
-    depth: Int = 0
+    settled: Set[Int]
   ): Option[List[Int]] = {
-    if (depth > MaxDepth) throw new DepthLimitExceeded
     val m = LazyListCpsLogicMonad
-    m.fsplit(frontier) match {
-      case None => None
-      case Some((tryState, rest)) =>
-        tryState match {
-          case Failure(e) => throw e
-          case Success(state) =>
-            if (state.node == target) {
-              Some(state.path.reverse)
-            } else if (settled.contains(state.node)) {
-              exploreLazyList(graph, target, rest, settled, depth + 1)
-            } else {
-              val neighbors = graph(state.node)
-              val expanded = neighbors.foldLeft(m.mzero[PathState]) { (acc, edge) =>
-                if (settled.contains(edge.to)) acc
-                else m.mplus(acc, m.pure(PathState(edge.to, edge.to :: state.path, state.cost + edge.cost)))
+    @tailrec
+    def loop(frontier: LazyList[PathState], settled: Set[Int]): Option[List[Int]] = {
+      m.fsplit(frontier) match {
+        case None => None
+        case Some((tryState, rest)) =>
+          tryState match {
+            case Failure(e) => throw e
+            case Success(state) =>
+              if (state.node == target) {
+                Some(state.path.reverse)
+              } else if (settled.contains(state.node)) {
+                loop(rest, settled)
+              } else {
+                val neighbors = graph(state.node)
+                val expanded = neighbors.foldLeft(m.mzero[PathState]) { (acc, edge) =>
+                  if (settled.contains(edge.to)) acc
+                  else m.mplus(acc, m.pure(PathState(edge.to, edge.to :: state.path, state.cost + edge.cost)))
+                }
+                loop(m.mplus(expanded, rest), settled + state.node)
               }
-              exploreLazyList(graph, target, m.mplus(expanded, rest), settled + state.node, depth + 1)
-            }
-        }
+          }
+      }
     }
+    loop(frontier, settled)
   }
 
   /**
@@ -341,17 +326,13 @@ class LogicStreamObserverOverflowTest {
   }
 
   /**
-   * LogicStream graph exploration with large grid exceeds depth limit.
+   * LogicStream graph exploration with large grid is now stack-safe.
    *
-   * The recursive fsplit-based exploration (Dijkstra pattern) adds one
-   * stack frame per explored node. With a 100x100 grid (10000 nodes),
-   * the exploration visits thousands of nodes, each adding a stack frame
-   * through the recursive exploreLogicStream -> fsplit -> exploreLogicStream chain.
-   *
-   * Uses a depth counter instead of catching StackOverflowError for fast failure.
+   * The @tailrec exploration loop combined with trampolined fsplit
+   * (via lazyFsplit/CpsLazyT) makes the entire exploration stack-safe.
    */
   @Test
-  def testLogicStreamGraphExplorationOverflow(): Unit = {
+  def testLogicStreamGraphExplorationNoOverflow(): Unit = {
     val gridSize = 100  // 10000 nodes
     val graph = buildGridGraph(gridSize)
     val target = gridSize * gridSize - 1
@@ -359,28 +340,21 @@ class LogicStreamObserverOverflowTest {
     val m = CpsLogicStreamSyncMonad
     val start = PathState(0, List(0), 0)
     val frontier: LogicStream[PathState] = m.pure(start)
-    try {
-      val result = exploreLogicStream(graph, target, frontier, Set.empty)
-      // If we get here, the problem was fixed
-      assertTrue(result.isDefined)
-    } catch {
-      case _: DepthLimitExceeded =>
-        // Expected: recursive fsplit exploration exceeds depth limit.
-        // This is the same pattern as rl-logic's ShortestPath,
-        // which uses LazyT/SuspendableObserverProvider to avoid overflow.
-        return
-    }
+    val result = exploreLogicStream(graph, target, frontier, Set.empty)
+    assertTrue("Path should be found in 100x100 grid", result.isDefined)
+    assertEquals(0, result.get.head)
+    assertEquals(target, result.get.last)
   }
 
   /**
-   * LazyList graph exploration with large grid exceeds depth limit.
+   * LazyList graph exploration with large grid is now stack-safe.
    *
-   * LazyList's fsplit returns Option[(Try[A], LazyList[A])] directly
-   * (Observer = identity). The recursive exploration adds one stack frame
-   * per explored node. With a large grid, this also exceeds the depth limit.
+   * The @tailrec exploration loop does not grow the JVM stack.
+   * LazyList's fsplit returns directly (Observer = identity),
+   * and the loop is @tailrec, so the exploration is stack-safe.
    */
   @Test
-  def testLazyListGraphExplorationOverflow(): Unit = {
+  def testLazyListGraphExplorationNoOverflow(): Unit = {
     val gridSize = 100  // 10000 nodes
     val graph = buildGridGraph(gridSize)
     val target = gridSize * gridSize - 1
@@ -388,15 +362,10 @@ class LogicStreamObserverOverflowTest {
     val m = LazyListCpsLogicMonad
     val start = PathState(0, List(0), 0)
     val frontier: LazyList[PathState] = m.pure(start)
-    try {
-      val result = exploreLazyList(graph, target, frontier, Set.empty)
-      // If we get here, the exploration didn't overflow
-      assertTrue(result.isDefined)
-    } catch {
-      case _: DepthLimitExceeded =>
-        // Expected: recursive exploration exceeds depth limit
-        return
-    }
+    val result = exploreLazyList(graph, target, frontier, Set.empty)
+    assertTrue("Path should be found in 100x100 grid", result.isDefined)
+    assertEquals(0, result.get.head)
+    assertEquals(target, result.get.last)
   }
 
   // =========================================================================
@@ -411,6 +380,38 @@ class LogicStreamObserverOverflowTest {
    * Instead of direct recursion on the JVM stack, each step is
    * captured as a CpsLazyT.Delay node and interpreted via tailRecM.
    */
+  // =========================================================================
+  // Part 6: LazyList filter -- now stack-safe via withMsplit
+  //
+  // The `filter` extension method on CpsLogicMonad previously used
+  // flatMap(msplit(a)) { ... } recursively. For LazyList, each step
+  // wrapped the result in a flatMap on a singleton LazyList, building
+  // deep stateFromIteratorConcatSuffix chains. Now that filter uses
+  // withMsplit, which for LazyList (Observer=Identity) becomes a direct
+  // call f(fsplit(c)), the singleton flatMap is eliminated.
+  // =========================================================================
+
+  /**
+   * LazyList filter is now stack-safe thanks to withMsplit.
+   *
+   * Previously each element processed by filter added a flatMap(msplit(...))
+   * layer, causing StackOverflowError. With withMsplit, the singleton
+   * flatMap is eliminated and filtering is stack-safe.
+   */
+  @Test
+  def testLazyListFilterNoOverflow(): Unit = {
+    val m = LazyListCpsLogicMonad
+    val stream: LazyList[Int] = LazyList.from(1).take(MaxDepth)
+    import cps.monads.logic.filter
+    val filtered = filter[LazyList, Int](stream)(using m)(_ % 2 == 0)
+    val result = m.mObserveN(filtered, MaxDepth / 2)
+    assertEquals(MaxDepth / 2, result.size)
+  }
+
+  // =========================================================================
+  // Part 7: CpsLazy proof-of-concept
+  // =========================================================================
+
   @Test
   def testCpsLazyFoldNoOverflow(): Unit = {
     val lazyMonad = CpsLazyT.cpsLazyTMonad[CpsIdentity](using CpsIdentityMonad)

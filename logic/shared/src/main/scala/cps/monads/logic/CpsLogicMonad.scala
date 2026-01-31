@@ -73,14 +73,22 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     flattenObserver(observerCpsMonad.map(fa)(a => pure(a)))
   }
 
+  /** Apply a function to the result of fsplit, flattening the observer.
+    * This eliminates the singleton flatMap(msplit(a)) { f } pattern,
+    * which for LazyList causes deep iterator chain buildup and stack overflow.
+    * For LazyList (Observer=Identity), this becomes f(fsplit(c)) — a direct call.
+    * For LogicStreamT (Observer=F), this becomes flattenObserver(F.map(fsplit(c))(f)).
+    */
+  def withMsplit[A, B](c: M[A])(f: Option[(Try[A], M[A])] => M[B]): M[B] =
+    flattenObserver(observerCpsMonad.map(fsplit(c))(f))
+
   /** Can be viewed as `fair Or` -- values from both computations are interleaved
     */
   def interleave[A](a: M[A], b: M[A]): M[A] = {
-    flatMap(msplit(a)) { sa =>
-      sa match
-        case None => b
-        case Some((ta, sa1)) =>
-          mplus(fromTry(ta), interleave(b, sa1))
+    withMsplit(a) {
+      case None => b
+      case Some((ta, sa1)) =>
+        mplus(fromTry(ta), interleave(b, sa1))
     }
   }
 
@@ -89,15 +97,14 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     * >>- in haskell LogicT
     */
   def fairFlatMap[A, B](ma: M[A], mb: A => M[B]): M[B] = {
-    flatMap(msplit(ma)) { sa =>
-      sa match
-        case None => mzero
-        case Some((ta, sa1)) =>
-          ta match
-            case Success(a) =>
-              interleave(mb(a), fairFlatMap(sa1, mb))
-            case Failure(ex) =>
-              error(ex)
+    withMsplit(ma) {
+      case None => mzero
+      case Some((ta, sa1)) =>
+        ta match
+          case Success(a) =>
+            interleave(mb(a), fairFlatMap(sa1, mb))
+          case Failure(ex) =>
+            error(ex)
     }
   }
 
@@ -108,15 +115,14 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     * @param elsep - what to do if <code> a </code> is empty
     */
   def ifte[A, B](a: M[A], thenp: A => M[B], elsep: => M[B]): M[B] = {
-    flatMap(msplit(a)) { sc =>
-      sc match
-        case None => elsep
-        case Some((ta, sa)) =>
-          ta match
-            case Success(a) =>
-              mplus(thenp(a), flatMap(sa)(thenp))
-            case Failure(ex) =>
-              error(ex)
+    withMsplit(a) {
+      case None => elsep
+      case Some((ta, sa)) =>
+        ta match
+          case Success(a) =>
+            mplus(thenp(a), flatMap(sa)(thenp))
+          case Failure(ex) =>
+            error(ex)
     }
   }
 
@@ -127,11 +133,10 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     * @return
     */
   def once[A](a: M[A]): M[A] = {
-    flatMap(msplit(a)) { sc =>
-      sc match
-        case None => mzero
-        case Some((ta, sa)) =>
-          fromTry(ta)
+    withMsplit(a) {
+      case None => mzero
+      case Some((ta, sa)) =>
+        fromTry(ta)
     }
   }
 
@@ -143,11 +148,10 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
     */
   def limit[A](a: M[A], n: Int): M[A] = {
     if (n <= 0) mzero
-    else flatMap(msplit(a)) { sc =>
-      sc match
-        case None => mzero
-        case Some((ta, sa)) =>
-          mplus(fromTry(ta), limit(sa, n - 1))
+    else withMsplit(a) {
+      case None => mzero
+      case Some((ta, sa)) =>
+        mplus(fromTry(ta), limit(sa, n - 1))
     }
   }
 
@@ -200,7 +204,7 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
   }
 
   def mFoldM[A, S](ma: M[A], s0: S)(op: (S, A) => M[S]): M[S] =
-    flatMap(msplit(ma)) {
+    withMsplit(ma) {
       case None => pure(s0)
       case Some((ta, sa)) =>
         ta match
@@ -294,19 +298,18 @@ extension [M[_], A](ma: M[A])(using m: CpsLogicMonad[M])
   /** filter values, which satisfy predicate.
     */
   def filter(p: A => Boolean): M[A] =
-    m.flatMap(m.msplit(ma)) { sc =>
-      sc match
-        case None => m.mzero
-        case Some((ta, sa)) =>
-          ta match
-            case Success(a) =>
-              if (p(a)) {
-                m.mplus(m.pure(a), sa.filter(p))
-              } else {
-                sa.filter(p)
-              }
-            case Failure(ex) =>
-              m.error(ex)
+    m.withMsplit(ma) {
+      case None => m.mzero
+      case Some((ta, sa)) =>
+        ta match
+          case Success(a) =>
+            if (p(a)) {
+              m.mplus(m.pure(a), sa.filter(p))
+            } else {
+              sa.filter(p)
+            }
+          case Failure(ex) =>
+            m.error(ex)
     }
 
   /** get first N values of computation, discarding all other.
