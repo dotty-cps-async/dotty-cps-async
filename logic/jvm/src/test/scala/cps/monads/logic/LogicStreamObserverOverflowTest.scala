@@ -99,14 +99,15 @@ class LogicStreamObserverOverflowTest {
   // =========================================================================
 
   /**
-   * LogicStream interleave: construction is lazy (by-name in mplus), but
-   * observing many results overflows because interleave builds nested
-   * flatMap(msplit(a)) chains on the JVM stack.
+   * LogicStream interleave: now stack-safe thanks to trampolined lazyFsplit.
    *
-   * Uses MaxDepth-sized streams (not N) to trigger overflow faster.
+   * Previously, observing many interleaved results overflowed because
+   * interleave builds nested flatMap(msplit(a)) chains on the JVM stack.
+   * With lazyFsplit routing through CpsLazyT, recursive fsplit calls
+   * are trampolined via tailRecM.
    */
   @Test
-  def testLogicStreamInterleaveObserveOverflow(): Unit = {
+  def testLogicStreamInterleaveObserveNoOverflow(): Unit = {
     val m = CpsLogicStreamSyncMonad
     val halfD = MaxDepth / 2
     val a: LogicStream[Int] = LogicStream.fromCollection((1 to halfD).toList)
@@ -115,14 +116,9 @@ class LogicStreamObserverOverflowTest {
     // Single observation is fine
     val first = m.mObserveOne(interleaved)
     assertTrue(first.isDefined)
-    // Observing many elements overflows
-    try {
-      val many = m.mObserveN(interleaved, MaxDepth)
-      assertEquals(MaxDepth, many.size)
-    } catch {
-      case _: StackOverflowError =>
-        return
-    }
+    // Observing many elements should now succeed without overflow
+    val many = m.mObserveN(interleaved, MaxDepth)
+    assertEquals(MaxDepth, many.size)
   }
 
   /**

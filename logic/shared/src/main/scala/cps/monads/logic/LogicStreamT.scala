@@ -41,7 +41,13 @@ sealed trait LogicStreamT[F[_]: CpsTryMonad, A] {
 
   def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A]
 
-  def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]]
+  def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]]
+
+  def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] = {
+    val sp = SuspendableObserverProvider.usingLazyT[F]
+    sp.runSuspended(lazyFsplit(sp))
+  }
+
   def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]]
 
 }
@@ -62,8 +68,8 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       other
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      summon[CpsTryMonad[F]].pure(None)
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.pure(None)
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       mpure(None)
@@ -87,8 +93,8 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       Cons(Success(a), () => other)
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      summon[CpsTryMonad[F]].pure(Some((Success(a), Empty[F, A]())))
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.pure(Some((Success(a), Empty[F, A]())))
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       mpure(Some((Success(a), Empty[F, A]())))
@@ -113,8 +119,8 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       Cons(Failure(e), () => other)
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      summon[CpsTryMonad[F]].pure(Some((Failure(e), Empty[F, A]())))
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.pure(Some((Failure(e), Empty[F, A]())))
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       mpure(Some((Failure(e), Empty[F, A]())))
@@ -146,8 +152,8 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       MPlusSeq[F, A](Queue(this, other))
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      summon[CpsTryMonad[F]].pure(Some((head, tail())))
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.pure(Some((head, tail())))
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       mpure(Some((head, tail())))
@@ -168,17 +174,17 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       MPlusSeq[F, A](queue.enqueue(Suspend(() => other)))
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
       queue.dequeueOption match
         case None =>
-          summon[CpsTryMonad[F]].pure(None)
+          sp.monad.pure(None)
         case Some((head, tail)) =>
-          summon[CpsTryMonad[F]].flatMap(head.fsplit) {
+          sp.monad.flatMap(head.lazyFsplit(sp)) {
             case None =>
-              MPlusSeq[F, A](tail).fsplit
+              sp.monad.flatDelay(MPlusSeq[F, A](tail).lazyFsplit(sp))
             case Some((headHead, tailHead)) =>
-              if (tail.isEmpty) then summon[CpsTryMonad[F]].pure(Some((headHead, tailHead)))
-              else summon[CpsTryMonad[F]].pure(Some((headHead, tailHead.mplus(MPlusSeq(tail)))))
+              if (tail.isEmpty) then sp.monad.pure(Some((headHead, tailHead)))
+              else sp.monad.pure(Some((headHead, tailHead.mplus(MPlusSeq(tail)))))
           }
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
@@ -210,8 +216,8 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       MPlusSeq[F, A](Queue(this, Suspend(() => other)))
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      summon[CpsTryMonad[F]].flatMap(waited)(_.fsplit)
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.flatMap(sp.suspend(waited))(_.lazyFsplit(sp))
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       WaitF[F, Option[(Try[A], LogicStreamT[F, A])]](
@@ -234,8 +240,11 @@ object LogicStreamT {
     override def mplus(other: => LogicStreamT[F, A]): LogicStreamT[F, A] =
       Suspend[F, A](() => suspended().mplus(other))
 
-    override def fsplit: F[Option[(Try[A], LogicStreamT[F, A])]] =
-      suspended().fsplit
+    override def lazyFsplit(sp: SuspendableObserverProvider[F]): sp.SO[Option[(Try[A], LogicStreamT[F, A])]] =
+      sp.monad.flatDelay {
+        try suspended().lazyFsplit(sp)
+        catch case NonFatal(ex) => sp.monad.error(ex)
+      }
 
     override def msplit: LogicStreamT[F, Option[(Try[A], LogicStreamT[F, A])]] =
       suspended().msplit
@@ -284,6 +293,8 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
 
   override val observerCpsMonad: CpsTryMonad[F] = summon[CpsTryMonad[F]]
 
+  def sopProvider: SuspendableObserverProvider[F]
+
   override def pure[T](t: T): LogicStreamT[F, T] = LogicStreamT.mpure(t)(using observerCpsMonad)
 
   override def map[A, B](fa: LogicStreamT[F, A])(f: A => B): LogicStreamT[F, B] =
@@ -310,14 +321,16 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
     c.msplit
   }
 
-  override def fsplit[A](c: LogicStreamT[F, A]): F[Option[(Try[A], LogicStreamT[F, A])]] =
-    c.fsplit
+  override def fsplit[A](c: LogicStreamT[F, A]): F[Option[(Try[A], LogicStreamT[F, A])]] = {
+    val sp = sopProvider
+    sp.runSuspended(c.lazyFsplit(sp))
+  }
 
   override def flattenObserver[A](fma: F[LogicStreamT[F, A]]): LogicStreamT[F, A] =
     LogicStreamT.WaitF(fma)
 
   override def mObserveOne[A](ma: LogicStreamT[F, A]): Observer[Option[A]] = {
-    observerCpsMonad.flatMap(ma.fsplit) {
+    observerCpsMonad.flatMap(fsplit(ma)) {
       case None =>
         observerCpsMonad.pure(None)
       case Some((head, tail)) =>
@@ -337,7 +350,7 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
     observerCpsMonad.flatMap(zeroM) { z0 =>
       observerCpsMonad.tailRecM[(B, LogicStreamT[F, A]), B]((z0, ma)) { case (b, stream) =>
         if (!p(b)) then observerCpsMonad.pure(Right(b))
-        else observerCpsMonad.flatMap(stream.fsplit) {
+        else observerCpsMonad.flatMap(fsplit(stream)) {
           case None => observerCpsMonad.pure(Right(b))
           case Some((head, tail)) =>
             head match
@@ -364,6 +377,9 @@ class CpsLogicStreamTryMonad[F[_]: CpsTryMonad]
 
   override val observerCpsMonad: CpsTryMonad[F] = summon[CpsTryMonad[F]]
 
+  override val sopProvider: SuspendableObserverProvider[F] =
+    SuspendableObserverProvider.usingLazyT[F]
+
 }
 
 object CpsLogicStreamSyncMonad
@@ -377,8 +393,11 @@ object CpsLogicStreamSyncMonad
 
   override val observerCpsMonad: CpsTryMonad[CpsIdentity] = summon[CpsTryMonad[CpsIdentity]]
 
+  override val sopProvider: SuspendableObserverProvider[CpsIdentity] =
+    SuspendableObserverProvider.usingLazyT[CpsIdentity]
+
   override def toLazyList[T](m: LogicStream[T]): LazyList[T] = {
-    m.fsplit match
+    fsplit(m) match
       case None => LazyList.empty
       case Some((head, tail)) =>
         head match
@@ -398,5 +417,8 @@ class CpsLogicStreamConcurrenctMonad[F[_]: CpsConcurrentMonad]
   override type Observer[A] = F[A]
 
   override val observerCpsMonad: CpsConcurrentMonad[F] = summon[CpsConcurrentMonad[F]]
+
+  override val sopProvider: SuspendableObserverProvider[F] =
+    SuspendableObserverProvider.usingLazyT[F]
 
 }
