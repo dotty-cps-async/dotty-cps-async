@@ -118,7 +118,7 @@ trait LazyListCpsLogicMonadBase extends CpsSyncLogicMonad[LazyList] {
 
   }
 
-  override def mFoldM[S, A](ma: LazyList[A], s0: S)(op: (S, A) => LazyList[S]): LazyList[S] = {
+  override def mFoldM[A, S](ma: LazyList[A], s0: S)(op: (S, A) => LazyList[S]): LazyList[S] = {
     if (ma.isEmpty) {
       LazyList(s0)
     } else {
