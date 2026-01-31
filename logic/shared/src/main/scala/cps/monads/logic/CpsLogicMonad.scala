@@ -165,36 +165,21 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
   def mFoldLeftWhileObserveM[A, B](ma: M[A], zero: Observer[B], p: B => Boolean)(
       op: (Observer[B], Observer[A]) => Observer[B]
   ): Observer[B] = {
-
-    observerCpsMonad.flatMap(zero) { z =>
-      if (p(z)) then
-        observerCpsMonad.flatMap(fsplit(ma)) {
-          case None => observerCpsMonad.pure(z)
+    observerCpsMonad.flatMap(zero) { z0 =>
+      observerCpsMonad.tailRecM[(B, M[A]), B]((z0, ma)) { case (b, stream) =>
+        if (!p(b)) then observerCpsMonad.pure(Right(b))
+        else observerCpsMonad.flatMap(fsplit(stream)) {
+          case None => observerCpsMonad.pure(Right(b))
           case Some((head, rest)) =>
             head match
               case Failure(ex) => observerCpsMonad.error(ex)
               case Success(a) =>
-                val nextZero = op(observerCpsMonad.pure(z), observerCpsMonad.pure(a))
-                mFoldLeftWhileObserveM(rest, nextZero, p)(op)
-        }
-      else observerCpsMonad.pure(z)
-    }
-
-    def loop(zeroObs: Observer[B], rest: M[A]): Observer[B] = {
-      observerCpsMonad.flatMap(zeroObs) { z =>
-        if (p(z)) {
-          observerCpsMonad.flatMap(fsplit(rest)) {
-            case None => observerCpsMonad.pure(z)
-            case Some((ta, sa)) =>
-              val nextZero = op(observerCpsMonad.pure(z), observerCpsMonad.pure(ta.get))
-              loop(nextZero, sa)
-          }
-        } else {
-          observerCpsMonad.pure(z)
+                observerCpsMonad.map(op(observerCpsMonad.pure(b), observerCpsMonad.pure(a))) { newB =>
+                  Left((newB, rest))
+                }
         }
       }
     }
-    loop(zero, ma)
   }
 
   @deprecated("use mFoldLeftWhileObserve", "1.0.0")
@@ -227,14 +212,9 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
             error(ex)
     }
 
-  def fromCollection[A](collect: IterableOnce[A]): M[A] = {
-    def fromIt(it: Iterator[A]): M[A] =
-      if (it.hasNext) {
-        mplus(pure(it.next()), fromIt(it))
-      } else {
-        mzero
-      }
-    fromIt(collect.iterator)
+  def fromCollection[A](collect: Iterable[A]): M[A] = {
+    if (collect.isEmpty) mzero
+    else mplus(pure(collect.head), fromCollection(collect.tail))
   }
 
 }
@@ -303,14 +283,9 @@ trait CpsLogicMonadInstanceContext[M[_]] extends CpsLogicMonad[M] {
   * @param collection - collection to transform
   * @param m - logical monad to use.
   */
-def all[M[_], A](collection: IterableOnce[A])(using m: CpsLogicMonad[M]): M[A] =
-  def allIt(it: Iterator[A]): M[A] =
-    if (it.hasNext) {
-      m.mplus(m.pure(it.next()), allIt(it))
-    } else {
-      m.mzero
-    }
-  allIt(collection.iterator)
+def all[M[_], A](collection: Iterable[A])(using m: CpsLogicMonad[M]): M[A] =
+  m.fromCollection(collection)
+
 
 /** CpsLogicMonad extension methods.
   */
@@ -460,7 +435,7 @@ transparent inline def guard[M[_]](p: => Boolean)(using mc: CpsLogicMonadContext
   * @param mc - monad context
   * @tparam M
   */
-transparent inline def choicesFrom[M[_], A](collection: IterableOnce[A])(using mc: CpsLogicMonadContext[M]): A =
+transparent inline def choicesFrom[M[_], A](collection: Iterable[A])(using mc: CpsLogicMonadContext[M]): A =
   reflect {
     mc.monad.fromCollection(collection)
   }
@@ -483,7 +458,7 @@ class Choices[M[_]](using mc: CpsLogicMonadContext[M]) {
       mc.monad.fromCollection(values)
     }
 
-  transparent inline def from[A](values: IterableOnce[A]): A =
+  transparent inline def from[A](values: Iterable[A]): A =
     reflect {
       mc.monad.fromCollection(values)
     }

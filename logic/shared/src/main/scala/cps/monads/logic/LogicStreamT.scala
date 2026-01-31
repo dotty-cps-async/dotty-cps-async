@@ -334,20 +334,21 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
       zeroM: F[B],
       p: B => Boolean
   )(op: (F[B], F[A]) => F[B]): F[B] = {
-    observerCpsMonad.flatMap(zeroM) { zero =>
-      if (p(zero)) then
-        observerCpsMonad.flatMap(ma.fsplit) {
-          case None =>
-            observerCpsMonad.pure(zero)
+    observerCpsMonad.flatMap(zeroM) { z0 =>
+      observerCpsMonad.tailRecM[(B, LogicStreamT[F, A]), B]((z0, ma)) { case (b, stream) =>
+        if (!p(b)) then observerCpsMonad.pure(Right(b))
+        else observerCpsMonad.flatMap(stream.fsplit) {
+          case None => observerCpsMonad.pure(Right(b))
           case Some((head, tail)) =>
             head match
               case Success(a) =>
-                val b1 = op(observerCpsMonad.pure(zero), observerCpsMonad.pure(a))
-                mFoldLeftWhileObserveM(tail, b1, p)(op)
+                observerCpsMonad.map(op(observerCpsMonad.pure(b), observerCpsMonad.pure(a))) { newB =>
+                  Left((newB, tail))
+                }
               case Failure(e) =>
                 observerCpsMonad.error(e)
         }
-      else observerCpsMonad.pure(zero)
+      }
     }
   }
 
