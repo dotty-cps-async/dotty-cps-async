@@ -156,9 +156,12 @@ trait CpsLogicMonad[M[_]] extends CpsTryMonad[M] {
   }
 
   def mObserveOne[A](ma: M[A]): Observer[Option[A]] =
-    observerCpsMonad.map(fsplit(ma)) {
-      case None          => None
-      case Some((ta, _)) => ta.toOption
+    observerCpsMonad.flatMap(fsplit(ma)) {
+      case None => observerCpsMonad.pure(None)
+      case Some((ta, _)) =>
+        ta match
+          case Success(a) => observerCpsMonad.pure(Some(a))
+          case Failure(e) => observerCpsMonad.error(e)
     }
 
   def mObserveN[A](ma: M[A], n: Int): Observer[IndexedSeq[A]] =

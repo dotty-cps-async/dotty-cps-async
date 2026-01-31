@@ -329,42 +329,6 @@ trait CpsLogicStreamMonadBase[F[_]: CpsTryMonad] extends CpsLogicMonad[[A] =>> L
   override def flattenObserver[A](fma: F[LogicStreamT[F, A]]): LogicStreamT[F, A] =
     LogicStreamT.WaitF(fma)
 
-  override def mObserveOne[A](ma: LogicStreamT[F, A]): Observer[Option[A]] = {
-    observerCpsMonad.flatMap(fsplit(ma)) {
-      case None =>
-        observerCpsMonad.pure(None)
-      case Some((head, tail)) =>
-        head match
-          case Success(a) =>
-            observerCpsMonad.pure(Some(a))
-          case Failure(e) =>
-            observerCpsMonad.error(e)
-    }
-  }
-
-  override def mFoldLeftWhileObserveM[A, B](
-      ma: LogicStreamT[F, A],
-      zeroM: F[B],
-      p: B => Boolean
-  )(op: (F[B], F[A]) => F[B]): F[B] = {
-    observerCpsMonad.flatMap(zeroM) { z0 =>
-      observerCpsMonad.tailRecM[(B, LogicStreamT[F, A]), B]((z0, ma)) { case (b, stream) =>
-        if (!p(b)) then observerCpsMonad.pure(Right(b))
-        else observerCpsMonad.flatMap(fsplit(stream)) {
-          case None => observerCpsMonad.pure(Right(b))
-          case Some((head, tail)) =>
-            head match
-              case Success(a) =>
-                observerCpsMonad.map(op(observerCpsMonad.pure(b), observerCpsMonad.pure(a))) { newB =>
-                  Left((newB, tail))
-                }
-              case Failure(e) =>
-                observerCpsMonad.error(e)
-        }
-      }
-    }
-  }
-
 }
 
 class CpsLogicStreamTryMonad[F[_]: CpsTryMonad]
