@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+    <title>Writing your own monad &#8212; dotty-cps-async 1.3.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/nature.css" />
+    <link rel="stylesheet" type="text/css" href="_static/css/s4defs-roles.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Monad Context" href="MonadContexts.html" />
+    <link rel="prev" title="Integrations" href="Integrations.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="MonadContexts.html" title="Monad Context"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="Integrations.html" title="Integrations"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.3.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Writing your own monad</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="writing-your-own-monad">
+<h1>Writing your own monad<a class="headerlink" href="#writing-your-own-monad" title="Permalink to this heading">¶</a></h1>
+<p>To use <code class="docutils literal notranslate"><span class="pre">async</span></code>/<code class="docutils literal notranslate"><span class="pre">await</span></code> with a custom type <code class="docutils literal notranslate"><span class="pre">F[_]</span></code>, you need to provide an instance of one of the <a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L17"><code class="docutils literal notranslate"><span class="pre">CpsMonad</span></code></a> type classes.
+Which one depends on the features you need:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Typeclass</p></th>
+<th class="head"><p>Provides</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L17"><code class="docutils literal notranslate"><span class="pre">CpsMonad</span></code></a></p></td>
+<td><p>Basic <code class="docutils literal notranslate"><span class="pre">async</span></code>/<code class="docutils literal notranslate"><span class="pre">await</span></code> (if, loops, no exceptions)</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L156"><code class="docutils literal notranslate"><span class="pre">CpsTryMonad</span></code></a></p></td>
+<td><ul class="simple">
+<li><p>try/catch/finally inside <code class="docutils literal notranslate"><span class="pre">async</span></code></p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CpsAsyncMonad</span></code></p></td>
+<td><ul class="simple">
+<li><p>interop with callbacks and <code class="docutils literal notranslate"><span class="pre">Future</span></code></p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CpsConcurrentEffectMonad</span></code></p></td>
+<td><ul class="simple">
+<li><p>spawning fibers, structured concurrency for lazy effect monads (IO, ZIO, etc.)</p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CpsSchedulingMonad</span></code></p></td>
+<td><ul class="simple">
+<li><p>spawning for eager monads (Future), <code class="docutils literal notranslate"><span class="pre">await[F]</span></code> inside <code class="docutils literal notranslate"><span class="pre">async[Future]</span></code></p></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<section id="minimal-implementation">
+<h2>Minimal implementation<a class="headerlink" href="#minimal-implementation" title="Permalink to this heading">¶</a></h2>
+<p>At minimum, you need to implement <code class="docutils literal notranslate"><span class="pre">pure</span></code>, <code class="docutils literal notranslate"><span class="pre">map</span></code>, <code class="docutils literal notranslate"><span class="pre">flatMap</span></code>, and provide a monad context.
+For simple cases where no special context API is needed, mix in <a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonadContext.scala#L22"><code class="docutils literal notranslate"><span class="pre">CpsMonadInstanceContext</span></code></a>:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">import</span><span class="w"> </span><span class="nn">cps</span><span class="p">.</span><span class="n">_</span>
+
+<span class="c1">// Example: a monad wrapping Option</span>
+<span class="k">given</span><span class="w"> </span><span class="nc">CpsTryMonad</span><span class="p">[</span><span class="nc">Option</span><span class="p">]</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="nc">CpsTryMonadInstanceContext</span><span class="p">[</span><span class="nc">Option</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">pure</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="n">a</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">):</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">Some</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">map</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">](</span><span class="n">fa</span><span class="p">:</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">A</span><span class="p">])(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">B</span><span class="p">):</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">B</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fa</span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">flatMap</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">](</span><span class="n">fa</span><span class="p">:</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">A</span><span class="p">])(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">B</span><span class="p">]):</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">B</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fa</span><span class="p">.</span><span class="n">flatMap</span><span class="p">(</span><span class="n">f</span><span class="p">)</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">error</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="n">e</span><span class="p">:</span><span class="w"> </span><span class="nc">Throwable</span><span class="p">):</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nc">None</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">flatMapTry</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">](</span><span class="n">fa</span><span class="p">:</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">A</span><span class="p">])(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">Try</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">B</span><span class="p">]):</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">B</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"></span>
+<span class="w">    </span><span class="n">f</span><span class="p">(</span><span class="n">fa</span><span class="p">.</span><span class="n">map</span><span class="p">(</span><span class="nc">Success</span><span class="p">(</span><span class="n">_</span><span class="p">)).</span><span class="n">getOrElse</span><span class="p">(</span><span class="nc">Failure</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="nc">NoSuchElementException</span><span class="p">)))</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<p>After defining this given instance, you can write:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="kd">val</span><span class="w"> </span><span class="n">result</span><span class="p">:</span><span class="w"> </span><span class="nc">Option</span><span class="p">[</span><span class="nc">Int</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">async</span><span class="p">[</span><span class="nc">Option</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="p">(</span><span class="nc">Some</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span><span class="w"></span>
+<span class="w">  </span><span class="kd">val</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">await</span><span class="p">(</span><span class="nc">Some</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span><span class="w"></span>
+<span class="w">  </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+</section>
+<section id="concurrent-effect-monads">
+<h2>Concurrent effect monads<a class="headerlink" href="#concurrent-effect-monads" title="Permalink to this heading">¶</a></h2>
+<p>For lazy effect monads like <code class="docutils literal notranslate"><span class="pre">IO</span></code> or <code class="docutils literal notranslate"><span class="pre">ZIO</span></code>, where evaluation is deferred, implement <code class="docutils literal notranslate"><span class="pre">CpsConcurrentEffectMonad</span></code>.
+This extends <code class="docutils literal notranslate"><span class="pre">CpsAsyncEffectMonad</span></code> (which combines <code class="docutils literal notranslate"><span class="pre">CpsAsyncMonad</span></code> with delayed evaluation)
+with <code class="docutils literal notranslate"><span class="pre">CpsConcurrentMonad</span></code>, adding the ability to spawn computations in separate fibers:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="nc">CpsConcurrentMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">[</span><span class="n">_</span><span class="p">]]</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nc">CpsAsyncMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="k">type</span><span class="w"> </span><span class="nc">Spawned</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">spawnEffect</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="n">op</span><span class="p">:</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">A</span><span class="p">]):</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">Spawned</span><span class="p">[</span><span class="nc">A</span><span class="p">]]</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">join</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="n">op</span><span class="p">:</span><span class="w"> </span><span class="nc">Spawned</span><span class="p">[</span><span class="nc">A</span><span class="p">]):</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">A</span><span class="p">]</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">tryCancel</span><span class="p">[</span><span class="nc">A</span><span class="p">](</span><span class="n">op</span><span class="p">:</span><span class="w"> </span><span class="nc">Spawned</span><span class="p">[</span><span class="nc">A</span><span class="p">]):</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">Unit</span><span class="p">]</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+
+<span class="k">trait</span><span class="w"> </span><span class="nc">CpsConcurrentEffectMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">[</span><span class="n">_</span><span class="p">]]</span><span class="w"></span>
+<span class="w">  </span><span class="k">extends</span><span class="w"> </span><span class="nc">CpsConcurrentMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">]</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="nc">CpsAsyncEffectMonad</span><span class="p">[</span><span class="nc">F</span><span class="p">]</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">Spawned[A]</span></code> represents a running fiber (e.g., <code class="docutils literal notranslate"><span class="pre">Fiber[A]</span></code> in Cats Effect, <code class="docutils literal notranslate"><span class="pre">Fiber[E,</span> <span class="pre">A]</span></code> in ZIO).</p>
+<p>For eager monads like <code class="docutils literal notranslate"><span class="pre">Future</span></code>, use <code class="docutils literal notranslate"><span class="pre">CpsSchedulingMonad</span></code> instead, where <code class="docutils literal notranslate"><span class="pre">Spawned[A]</span> <span class="pre">=</span> <span class="pre">F[A]</span></code> and spawning is immediate.</p>
+<p>See the <a class="reference internal" href="Integrations.html#integrations"><span class="std std-ref">Integrations</span></a> section for ready-made instances for Cats Effect, ZIO, and other frameworks.</p>
+</section>
+<section id="stack-safe-monadic-recursion-tailrecm">
+<h2>Stack-safe monadic recursion (tailRecM)<a class="headerlink" href="#stack-safe-monadic-recursion-tailrecm" title="Permalink to this heading">¶</a></h2>
+<p><a class="reference external" href="https://github.com/rssh/dotty-cps-async/blob/master/shared/src/main/scala/cps/CpsMonad.scala#L17"><code class="docutils literal notranslate"><span class="pre">CpsMonad</span></code></a> provides a <code class="docutils literal notranslate"><span class="pre">tailRecM</span></code> method for stack-safe monadic recursion:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">tailRecM</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">](</span><span class="n">a</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">)(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">Either</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">]]):</span><span class="w"> </span><span class="nc">F</span><span class="p">[</span><span class="nc">B</span><span class="p">]</span><span class="w"></span>
+</pre></div>
+</div>
+<p>It iterates <code class="docutils literal notranslate"><span class="pre">f</span></code> until the result is <code class="docutils literal notranslate"><span class="pre">Right(b)</span></code>.  <code class="docutils literal notranslate"><span class="pre">Left(a1)</span></code> means “continue with new state <code class="docutils literal notranslate"><span class="pre">a1</span></code>”.</p>
+<p>The default implementation uses <code class="docutils literal notranslate"><span class="pre">flatMap</span></code> recursively, which is stack-safe for monads with internal trampolining
+(<code class="docutils literal notranslate"><span class="pre">Future</span></code>, <code class="docutils literal notranslate"><span class="pre">IO</span></code>, <code class="docutils literal notranslate"><span class="pre">TailRec</span></code>, etc.).
+However, for <strong>identity-like monads</strong> where <code class="docutils literal notranslate"><span class="pre">flatMap</span></code> is just function application, the default causes a stack overflow on deep recursion.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CpsIdentityMonad</span></code> overrides <code class="docutils literal notranslate"><span class="pre">tailRecM</span></code> with a <code class="docutils literal notranslate"><span class="pre">&#64;tailrec</span></code>-annotated loop:</p>
+<div class="highlight-scala notranslate"><div class="highlight"><pre><span></span><span class="k">override</span><span class="w"> </span><span class="k">def</span><span class="w"> </span><span class="nf">tailRecM</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">](</span><span class="n">a</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">)(</span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nc">Either</span><span class="p">[</span><span class="nc">A</span><span class="p">,</span><span class="w"> </span><span class="nc">B</span><span class="p">]):</span><span class="w"> </span><span class="nc">B</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">  </span><span class="nd">@annotation</span><span class="p">.</span><span class="n">tailrec</span><span class="w"></span>
+<span class="w">  </span><span class="k">def</span><span class="w"> </span><span class="nf">loop</span><span class="p">(</span><span class="n">current</span><span class="p">:</span><span class="w"> </span><span class="nc">A</span><span class="p">):</span><span class="w"> </span><span class="nc">B</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">current</span><span class="p">)</span><span class="w"> </span><span class="k">match</span><span class="w"> </span><span class="p">{</span><span class="w"></span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nc">Left</span><span class="p">(</span><span class="n">a1</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">loop</span><span class="p">(</span><span class="n">a1</span><span class="p">)</span><span class="w"></span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nc">Right</span><span class="p">(</span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">b</span><span class="w"></span>
+<span class="w">  </span><span class="p">}</span><span class="w"></span>
+<span class="w">  </span><span class="n">loop</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"></span>
+<span class="p">}</span><span class="w"></span>
+</pre></div>
+</div>
+<p>If your custom monad does not have internal trampolining (like identity or <code class="docutils literal notranslate"><span class="pre">Either</span></code>), you should override <code class="docutils literal notranslate"><span class="pre">tailRecM</span></code>
+with an explicitly stack-safe implementation, either using <code class="docutils literal notranslate"><span class="pre">&#64;tailrec</span></code> or an explicit loop with a mutable stack.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Writing your own monad</a><ul>
+<li><a class="reference internal" href="#minimal-implementation">Minimal implementation</a></li>
+<li><a class="reference internal" href="#concurrent-effect-monads">Concurrent effect monads</a></li>
+<li><a class="reference internal" href="#stack-safe-monadic-recursion-tailrecm">Stack-safe monadic recursion (tailRecM)</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="Integrations.html"
+                          title="previous chapter">Integrations</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="MonadContexts.html"
+                          title="next chapter">Monad Context</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/WritingYourOwnMonad.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="MonadContexts.html" title="Monad Context"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="Integrations.html" title="Integrations"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">dotty-cps-async 1.3.0 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Writing your own monad</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2020-2026, Ruslan Shevchenko.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 5.2.3.
+    </div>
+  </body>
+</html>

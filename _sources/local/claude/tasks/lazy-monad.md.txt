@@ -1,0 +1,5 @@
+
+ On rl-monad ( see /Users/rssh/work/oss/rl-logic we have LazyT defined at shared/src/main/scala/cps/rl/LazyT.scala ).
+  Think: in logic with the CpsLogicMonad when we have observer, we also have potential recursive overflow in chocie exploring algorithm
+ the same problem with CpsIdentify in CpsLogicStream and lazyList ?
+  Can we create a stress-test for this.  And if yes - move LazyT as CpsLazyT to the current project
