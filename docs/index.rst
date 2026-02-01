@@ -15,7 +15,6 @@ User Manual
    HighOrderFunctions
    ReturningClause
    MonadsInteroperability
-   AutomaticColoring
    AsyncStreams
    Integrations
    WritingYourOwnMonad
@@ -25,6 +24,7 @@ User Manual
    Features
    Migration
    AdditionalModules
+   DeprecatedFeatures
    random-notes/index.rst
    FAQ
    References
