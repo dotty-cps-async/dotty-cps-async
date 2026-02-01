@@ -56,6 +56,8 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:jvm=github://rssh/dotty-cps-async/master#jvm"
     ),
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
+    crossScalaVersions := Seq(dottyVersion, "3.8.1"),
+    publish / skip := (scalaVersion.value != dottyVersion),
     mimaPreviousArtifacts := Set("com.github.rssh" %% "dotty-cps-async" % "1.0.3")
   )
   .jsSettings(
@@ -65,7 +67,9 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:shared=github://rssh/dotty-cps-async/master#shared",
       "-source-links:js=github://rssh/dotty-cps-async/master#js"
     ),
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.9.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.20.2" % Test).cross(CrossVersion.for3Use2_13),
+    crossScalaVersions := Seq(dottyVersion, "3.8.1"),
+    publish / skip := (scalaVersion.value != dottyVersion),
     mimaFailOnNoPrevious := false
   )
   .nativeSettings(
@@ -128,7 +132,7 @@ lazy val cpsLoomTest = project
 
 lazy val compilerPlugin = project
   .in(file("compiler-plugin"))
-  .dependsOn(cps.jvm, cps.js)
+  .dependsOn(cps.jvm, cps.js % "test->compile")
   .settings(sharedSettings)
   .disablePlugins(SitePreviewPlugin)
   .settings(
@@ -140,7 +144,7 @@ lazy val compilerPlugin = project
       ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test"
     ),
     crossVersion := CrossVersion.full,
-    crossScalaVersions := Seq("3.3.6", "3.3.7", "3.7.2", "3.7.3", "3.7.4"),
+    crossScalaVersions := Seq("3.3.6", "3.3.7", "3.7.4", "3.8.1"),
     // TODO: split test into subdirectories.
     // Test/scalacOptions ++= {
     //   val jar = (Compile / packageBin).value
