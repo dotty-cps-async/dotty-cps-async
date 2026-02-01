@@ -25,7 +25,16 @@
 *   Fix `mFoldM` type parameter order inconsistency in `LazyListCpsLogicMonad` ([32fd58f](https://github.com/rssh/dotty-cps-async/commit/32fd58f8))
 *   Refactor `tailRecM` implementations to use tail recursion instead of deprecated `Either` methods ([c24e09d](https://github.com/rssh/dotty-cps-async/commit/c24e09d3), [6e3a6b9](https://github.com/rssh/dotty-cps-async/commit/6e3a6b99))
 
+### Build
+
+*   Add Scala 3.8.1 support for compiler plugin ([cbb3f17](https://github.com/rssh/dotty-cps-async/commit/cbb3f17f))
+*   Scala.js 1.20.2 ([e2bba2e](https://github.com/rssh/dotty-cps-async/commit/e2bba2eb))
+*   Scala Native 0.5.10 ([b345d4d](https://github.com/rssh/dotty-cps-async/commit/b345d4d4))
+*   sbt 1.12.1 ([34e6b09](https://github.com/rssh/dotty-cps-async/commit/34e6b09d))
+*   scalajs-junit-test-runtime 1.20.2
+
 ### Internal
 
 *   Remove redundant `mObserveOne` and `mFoldLeftWhileObserveM` overrides from `CpsLogicStreamMonadBase` ([6c10d75](https://github.com/rssh/dotty-cps-async/commit/6c10d75e))
+*   Disable debug logging in CompileIssue112 test ([1cfe4d8](https://github.com/rssh/dotty-cps-async/commit/1cfe4d8c))
 *   Document Scala 3.3.7 scaladoc thread-safety bug workaround in CONTRIBUTING.md ([32fd58f](https://github.com/rssh/dotty-cps-async/commit/32fd58f8))
