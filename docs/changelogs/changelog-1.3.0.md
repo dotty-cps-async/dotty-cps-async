@@ -28,5 +28,4 @@
 ### Internal
 
 *   Remove redundant `mObserveOne` and `mFoldLeftWhileObserveM` overrides from `CpsLogicStreamMonadBase` ([6c10d75](https://github.com/rssh/dotty-cps-async/commit/6c10d75e))
-*   Remove per-operation overrides (`interleave`, `fairFlatMap`, `ifte`, `once`, `limit`) from `LazyListCpsLogicMonad`, now handled universally by `withMsplit` ([409df28](https://github.com/rssh/dotty-cps-async/commit/409df289))
 *   Document Scala 3.3.7 scaladoc thread-safety bug workaround in CONTRIBUTING.md ([32fd58f](https://github.com/rssh/dotty-cps-async/commit/32fd58f8))
