@@ -4,7 +4,7 @@ import cps.*
 
 object CompileIssue112:
 
-  implicit inline def debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(53)
+  //implicit inline def debugLevel: cps.macros.flags.DebugLevel = cps.macros.flags.DebugLevel(53)
 
   extension (s: String)
     def baz[F[_]: CpsMonad]: F[F[Int]] = async[F]:
