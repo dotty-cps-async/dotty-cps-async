@@ -18,6 +18,7 @@ User Manual
    AutomaticColoring
    AsyncStreams
    Integrations
+   WritingYourOwnMonad
    MonadContexts
    CpsPreprocessor
    RuntimeAwait
