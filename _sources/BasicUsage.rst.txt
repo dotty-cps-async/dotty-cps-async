@@ -4,13 +4,13 @@ Dependency
 Sbt Example
 -----------
 
-The current release is 1.2.0.  See `changelogs/changelog-1.2.0.md`_ for details.
+The current release is 1.3.0.  See `changelogs/changelog-1.3.0.md`_ for details.
 
 Sbt dependency:
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.2.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.3.0"
 
 
 
@@ -18,7 +18,7 @@ JavaScript and Native targets are also supported.
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async" % "1.2.0"
+   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async" % "1.3.0"
 
 
 **Note**: :red:`%%%` automatically determines whether we are in a Scala/JVM or a Scala.js or a Scala.Native project (see |Scala.js Cross-Building|_).
@@ -28,7 +28,7 @@ According to the Scala versioning policy, the library can be used in projects wi
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async-next" % "1.2.0"
+   libraryDependencies += "io.github.dotty-cps-async" %%% "dotty-cps-async-next" % "1.3.0"
 
 
 
@@ -43,7 +43,7 @@ for sbt:
 
   autoCompilerPlugins := true
   addCompilerPlugin(
-   ("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.2.0")
+   ("io.github.dotty-cps-async" %% "dotty-cps-async-compiler-plugin" % "1.3.0")
           .cross(CrossVersion.full)
   )
 
@@ -52,7 +52,7 @@ for mill:
  .. code-block:: scala
 
   def scalacPluginIvyDeps = Agg(
-        ivy"io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.2.0")
+        ivy"io.github.dotty-cps-async:::dotty-cps-async-compiler-plugin:1.3.0")
 
 Loom support on JVM
 -------------------
@@ -62,14 +62,14 @@ To enable one, add `dotty-cps-async-loom` module to the dependencies:
 
  .. code-block:: scala
 
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom" % "1.2.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom" % "1.3.0"
 
  or
 
  .. code-block:: scala
 
    // for next line
-   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom-next" % "1.2.0"
+   libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async-loom-next" % "1.3.0"
 
 
 Licensing and commercial support
@@ -158,7 +158,7 @@ This minimal example is for |Future|_ monad and depends on library |dotty-cps-as
  .. code-block:: scala
 
   // https://mvnrepository.com/artifact/com.github.rssh/dotty-cps-async
-  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.2.0"
+  libraryDependencies += "io.github.dotty-cps-async" %% "dotty-cps-async" % "1.3.0"
 
 From '0.9.22' we can use `await` as extension method:
 
@@ -441,4 +441,4 @@ Yet one pair of names 'lift/unlift', used for example in the |monadless|_ librar
 .. |ZIO| replace:: **ZIO**
 .. _ZIO: https://zio.dev/
 
-.. _changelogs/changelog-1.2.0.md: changelogs/changelog-1.2.0.md
+.. _changelogs/changelog-1.3.0.md: changelogs/changelog-1.3.0.md
