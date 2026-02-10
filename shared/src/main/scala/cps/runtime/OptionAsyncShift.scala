@@ -5,6 +5,11 @@ import cps._
 
 class OptionAsyncShift[T] extends AsyncShift[Option[T]]:
 
+  def exists[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Boolean] =
+    o match
+      case Some(t) => p(t)
+      case None    => m.pure(false)
+
   def filter[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Option[T]] =
     o match
       case Some(t) =>
@@ -13,10 +18,20 @@ class OptionAsyncShift[T] extends AsyncShift[Option[T]]:
         }
       case None => m.pure(None)
 
+  def find[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Option[T]] =
+    o match
+      case Some(t) => m.map(p(t))(r => if r then Some(t) else None)
+      case None    => m.pure(None)
+
   def flatMap[F[_], U](o: Option[T], m: CpsMonad[F])(f: (T) => F[Option[U]]): F[Option[U]] =
     o match
       case Some(t) => f(t)
       case None    => m.pure(None)
+
+  def forall[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Boolean] =
+    o match
+      case Some(t) => p(t)
+      case None    => m.pure(true)
 
   def foreach[F[_], U](o: Option[T], m: CpsMonad[F])(f: (T) => F[U]): F[Unit] =
     o match
