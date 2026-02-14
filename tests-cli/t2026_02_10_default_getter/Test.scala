@@ -1,5 +1,6 @@
 //> using scala 3.3.7
 //> using scalacOption -Xcheck-macros
+// see: https://github.com/scala/scala3/issues/17445
 
 case class P(x: Int, y: Int)
 
