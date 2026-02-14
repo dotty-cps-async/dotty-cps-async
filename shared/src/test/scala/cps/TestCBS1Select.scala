@@ -100,25 +100,19 @@ class TestCBS1Select:
       val r = c.run()
       assert(r == Success(5))
 
-  // TODO: copy with await in named arg fails at compile time:
-  //   "symbols differ for p.copy$default$2"
-  // See https://github.com/scala/scala3/issues/17445
-  // Uncomment when fixed:
-  //  @Test def sel_copy_named_arg(): Unit =
-  //      val c = async{
-  //         val p = P(3, 4)
-  //         val p2 = p.copy(x = await(T1.cbi(10)))
-  //         p2
-  //      }
-  //      assert(c.run() == Success(P(10, 4)))
+  @Test def sel_copy_named_arg(): Unit =
+      val c = async{
+         val p = P(3, 4)
+         val p2 = p.copy(x = await(T1.cbi(10)))
+         p2
+      }
+      assert(c.run() == Success(P(10, 4)))
 
-  // This also fails with -Xcheck-macros: "symbols differ for p.copy$default$1"
-  // See https://github.com/scala/scala3/issues/17445
-  // @Test def sel_copy_no_await(): Unit =
-  //     val c = async{
-  //        val p = P(3, 4)
-  //        p.copy(y = 7)
-  //     }
-  //     assert(c.run() == Success(P(3, 7)))
+  @Test def sel_copy_no_await(): Unit =
+      val c = async{
+         val p = P(3, 4)
+         p.copy(y = 7)
+      }
+      assert(c.run() == Success(P(3, 7)))
 
 

@@ -77,6 +77,14 @@ object TransformUtil:
             lookupParamTerm(tree.symbol) match
               case Some(paramTerm) => paramTerm
               case _               => super.transformTerm(tree)(owner)
+          case sel @ Select(qualifier, name) =>
+            // Workaround for https://github.com/scala/scala3/issues/17445:
+            // Default TreeMap calls Select.copy which converts DerivedName (e.g. DefaultGetterName)
+            // to SimpleName via string conversion, causing -Xcheck-macros "symbols differ" failure.
+            // Use Select(qualifier, symbol) to preserve the original name kind.
+            val newQualifier = transformTerm(qualifier)(owner)
+            if (newQualifier eq qualifier) then tree
+            else Select(newQualifier, sel.symbol)
           case _ => super.transformTerm(tree)(owner)
 
       override def transformTypeTree(tree: TypeTree)(owner: Symbol): TypeTree =
