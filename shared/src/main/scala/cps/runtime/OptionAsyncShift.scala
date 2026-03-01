@@ -10,6 +10,14 @@ class OptionAsyncShift[T] extends AsyncShift[Option[T]]:
       case Some(t) => p(t)
       case None    => m.pure(false)
 
+  def collect[F[_], U](o: Option[T], m: CpsMonad[F])(pf: PartialFunction[T, F[U]]): F[Option[U]] =
+    o match
+      case Some(t) =>
+        pf.lift(t) match
+          case Some(fu) => m.map(fu)(Some(_))
+          case None     => m.pure(None)
+      case None => m.pure(None)
+
   def filter[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Option[T]] =
     o match
       case Some(t) =>
@@ -22,6 +30,11 @@ class OptionAsyncShift[T] extends AsyncShift[Option[T]]:
     o match
       case Some(t) => m.map(p(t))(r => if r then Some(t) else None)
       case None    => m.pure(None)
+
+  def fold[F[_], U](o: Option[T], m: CpsMonad[F])(ifEmpty: () => F[U])(f: T => F[U]): F[U] =
+    o match
+      case Some(t) => f(t)
+      case None    => ifEmpty()
 
   def flatMap[F[_], U](o: Option[T], m: CpsMonad[F])(f: (T) => F[Option[U]]): F[Option[U]] =
     o match

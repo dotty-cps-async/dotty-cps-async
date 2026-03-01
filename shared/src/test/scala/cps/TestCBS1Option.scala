@@ -105,5 +105,38 @@ class TestBS1Option:
      }
      assert(c.run() == Success(None))
 
+  @Test def optionCollect_some_defined(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = Some(2)
+        y.collect{ case x if x > 0 => await(T1.cbi(x)) * 10 }
+     }
+     assert(c.run() == Success(Some(20)))
 
+  @Test def optionCollect_some_notDefined(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = Some(2)
+        y.collect{ case x if x > 100 => await(T1.cbi(x)) * 10 }
+     }
+     assert(c.run() == Success(None))
+
+  @Test def optionCollect_none(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = None
+        y.collect{ case x if x > 0 => await(T1.cbi(x)) * 10 }
+     }
+     assert(c.run() == Success(None))
+
+  @Test def optionFold_some(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = Some(2)
+        y.fold(await(T1.cbi(0)))(x => await(T1.cbi(x)) * 10)
+     }
+     assert(c.run() == Success(20))
+
+  @Test def optionFold_none(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = None
+        y.fold(await(T1.cbi(0)))(x => await(T1.cbi(x)) * 10)
+     }
+     assert(c.run() == Success(0))
 

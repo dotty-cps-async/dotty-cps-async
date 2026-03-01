@@ -3,7 +3,7 @@ val dottyVersion = "3.3.7"
 
 import scala.scalanative.build._
 
-ThisBuild / version := "1.3.1-SNAPSHOT"
+ThisBuild / version := "1.3.1"
 ThisBuild / versionScheme := Some("semver-spec")
 ThisBuild / publishTo := localStaging.value
 
@@ -56,7 +56,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:jvm=github://rssh/dotty-cps-async/master#jvm"
     ),
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
-    crossScalaVersions := Seq(dottyVersion, "3.8.1"),
+    crossScalaVersions := Seq(dottyVersion, "3.8.2"),
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaPreviousArtifacts := Set("com.github.rssh" %% "dotty-cps-async" % "1.0.3")
   )
@@ -68,7 +68,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:js=github://rssh/dotty-cps-async/master#js"
     ),
     libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.20.2" % Test).cross(CrossVersion.for3Use2_13),
-    crossScalaVersions := Seq(dottyVersion, "3.8.1"),
+    crossScalaVersions := Seq(dottyVersion, "3.8.2"),
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaFailOnNoPrevious := false
   )
@@ -144,7 +144,7 @@ lazy val compilerPlugin = project
       ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test"
     ),
     crossVersion := CrossVersion.full,
-    crossScalaVersions := Seq("3.3.6", "3.3.7", "3.7.4", "3.8.1"),
+    crossScalaVersions := Seq("3.3.7", "3.8.2"),
     // TODO: split test into subdirectories.
     // Test/scalacOptions ++= {
     //   val jar = (Compile / packageBin).value
@@ -178,7 +178,7 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
       val jar = (compilerPlugin / Compile / packageBin).value
       Seq(s"-Xplugin:${jar.getAbsolutePath}", s"-Jdummy=${jar.lastModified}", "-color:never", "-explain")
     },
-    crossScalaVersions := Seq("3.3.6", "3.7.2")
+    crossScalaVersions := Seq("3.3.7", "3.8.2")
   )
   .jvmSettings(
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
