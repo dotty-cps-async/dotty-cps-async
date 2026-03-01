@@ -90,14 +90,16 @@ class TestTenUrls {
       val nFailure = urlsData.count(_._2.isInstanceOf[FetchResult.Failure])
       val nInfinite = urlsData.count(_._2 == FetchResult.InfiniteWait)
       FutureCompleter(f.transform{
-        case Success(x) => Success(x)
+        case Success(x) =>
+           FutureScopeContext.debugLog.clear()
+           Success(x)
         case Failure(ex) =>
-           // Diagnostic info for debugging unexpected failures (race condition?)
            System.err.println("=== TestTenUrls.testRandomBehavious failed ===")
            System.err.println(s"Exception type: ${ex.getClass.getName}")
            System.err.println(s"Exception message: ${ex.getMessage}")
            System.err.println(s"Exception cause: ${Option(ex.getCause).map(c => s"${c.getClass.getName}: ${c.getMessage}").getOrElse("null")}")
            System.err.println(s"urlsData distribution: success=$nSuccess, failure=$nFailure, infinite=$nInfinite")
+           FutureScopeContext.dumpDebugLog()
            System.err.println("=== end diagnostic info ===")
            Failure(ex)
       }.andThen { _ => FutureScopeContext.debugCancellation = false })

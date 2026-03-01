@@ -119,7 +119,7 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
       val nCancellable = cancellableFutures.size()
       val nNonCancellable = nonCancellables.size()
       val stack = Thread.currentThread().getStackTrace.take(10).map(_.toString).mkString("\n    ")
-      System.err.println(s"[FutureScopeContext.cancel] ex=${ex.getMessage}, cause=${Option(ex.getCause).map(_.getClass.getName)}, state=${stateRef.get()}, cancellables=$nCancellable, nonCancellables=$nNonCancellable\n    $stack")
+      FutureScopeContext.debugLog.add(s"[FutureScopeContext.cancel] ex=${ex.getMessage}, cause=${Option(ex.getCause).map(_.getClass.getName)}, state=${stateRef.get()}, cancellables=$nCancellable, nonCancellables=$nNonCancellable\n    $stack")
     }
 
     given ExecutionContext = ec
@@ -352,8 +352,17 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
 
 object FutureScopeContext {
 
-   // Set to true to log all cancel() calls for debugging
+   // When non-null, cancel() calls append diagnostic info here instead of printing.
+   // On test failure, call dumpDebugLog() to print collected entries.
+   val debugLog: java.util.concurrent.ConcurrentLinkedQueue[String] = new java.util.concurrent.ConcurrentLinkedQueue[String]()
+
    var debugCancellation: Boolean = false
+
+   def dumpDebugLog(): Unit =
+     var entry = debugLog.poll()
+     while entry != null do
+       System.err.println(entry)
+       entry = debugLog.poll()
 
    object StateFlags: 
      final val Active = 1
