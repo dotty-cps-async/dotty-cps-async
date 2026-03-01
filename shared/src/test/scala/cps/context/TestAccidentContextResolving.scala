@@ -21,7 +21,6 @@ class TestAccidentContextResolving {
   //  to try fail implicit resolving of await implicit params
 
   def fun(debug: Boolean = false): Future[Int] = {
-    if (debug) then println("TestAccidentContextResolving.fun called")
     Future successful 1
   }
 

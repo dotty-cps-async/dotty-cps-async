@@ -23,7 +23,6 @@ class GrandParentsTest {
   def testLogicSeqM() = {
       import GrandParentsTest.*
       val r = grandParent[LogicSeqLM]("Anne").observeAll.get
-      println(s"GrandParentTest:LogicSeq: r=$r")
       assert(r.size == 2)
       assert(r.contains("Sarah"))
       assert(r.contains("Arnold"))

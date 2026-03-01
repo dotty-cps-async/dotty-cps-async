@@ -53,9 +53,9 @@ class LogicTTest {
 
     cbOdds.observeN(4).run(1.second) match
       case Success(v) =>
-        println(s"cbOddsForLogStream=$v")
+        assert(v == Vector(1, 3, 5, 7))
       case Failure(ex) =>
-        ex.printStackTrace()
+        throw ex
 
     val cbOdds2fair = cbOdds | m.pure(2)
 
@@ -167,7 +167,6 @@ object LogicTTest {
       x <- oddsOrTwoFair
       y <- if (x % 2 == 0) then m.once(m.pure(x)) else m.mzero[Int]
     } yield {
-      println(s"y=$y")
       y
     }
   }

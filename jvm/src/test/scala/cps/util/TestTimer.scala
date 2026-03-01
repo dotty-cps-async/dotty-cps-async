@@ -36,7 +36,6 @@ object TestTimer:
   def schedule(duration: FiniteDuration)(f: => Unit): CancelToken = {
     val timerTask = new TimerTask {
       override def run(): Unit = {
-        println("timer called java.util.TimerTask.run")
         try {
           f
         } catch {
@@ -46,7 +45,6 @@ object TestTimer:
         }
       }
     }
-    println("call java.util.Timer.schedule")
     timer.schedule(timerTask, duration.toMillis)
     timerTask
   }

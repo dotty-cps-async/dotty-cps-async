@@ -246,7 +246,6 @@ class TestCpsContT {
       await(fr.observe)
     }
     val r2 = r.map { x =>
-      println(s"checkShiftReset4::CpsContT, r2 = $x")
       assert(x == 9)
       x
     }

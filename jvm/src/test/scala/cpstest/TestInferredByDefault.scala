@@ -23,19 +23,15 @@ class TestInferredByDefault {
   @Test def testInferredParam() = {
      val v = async{
        val s = summon[CpsMonadContext[?]].toString
-       println(s)
        s
      }
 
      (v: @unchecked) match {
        case cf: CompletableFuture[?] =>
-          println("CompletableFuture")
        case f: scala.concurrent.Future[?] =>
-          println("Future")
        case fm: FreeMonad[?] =>
-          println("FreeMonad")
        case _ =>
-          println(s"unknown type $v")
+          throw new AssertionError(s"unknown type $v")
      }
 
   }
