@@ -360,6 +360,8 @@ object CpsLogicStreamSyncMonad
   override val sopProvider: SuspendableObserverProvider[CpsIdentity] =
     SuspendableObserverProvider.usingLazyT[CpsIdentity]
 
+  override def flattenObserver[A](fma: LogicStream[A]): LogicStream[A] = fma
+
   override def toLazyList[T](m: LogicStream[T]): LazyList[T] = {
     fsplit(m) match
       case None => LazyList.empty
