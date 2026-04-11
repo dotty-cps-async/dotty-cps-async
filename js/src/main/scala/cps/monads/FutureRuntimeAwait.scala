@@ -2,6 +2,8 @@ package cps.monads
 
 /*
 TODO:  enable when js.await will be available on scala-3
+  js.await is now available on 3.8+, but it must be lexically inside a js.async { ... } block,
+  so CpsRuntimeAwait can't use it directly — needs deeper integration with the CPS transformation.
 import cps.*
 
 import scalajs.*
