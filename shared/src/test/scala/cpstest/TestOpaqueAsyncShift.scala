@@ -26,12 +26,12 @@ object Issue99Maybe1 {
 
     def map[B](f: A => B): Issue99Maybe1[B] = self match {
       case Absent => Absent
-      case a: A   => f(a).asInstanceOf[Issue99Maybe1[B]]
+      case a      => f(a.asInstanceOf[A]).asInstanceOf[Issue99Maybe1[B]]
     }
 
     def map_async[F[_], B](m: CpsAsyncMonad[F])(f: A => F[B]): F[Issue99Maybe1[B]] = self match {
       case Absent => m.pure(Absent)
-      case a: A   => m.map(f(a))(b => b.asInstanceOf[Issue99Maybe1[B]])
+      case a      => m.map(f(a.asInstanceOf[A]))(b => b.asInstanceOf[Issue99Maybe1[B]])
     }
 
   }
@@ -59,7 +59,7 @@ object Issue99Maybe2 {
 
     def map[B](f: A => B): Issue99Maybe2[B] = self match {
       case Absent => Absent
-      case a: A   => f(a).asInstanceOf[Issue99Maybe2[B]]
+      case a      => f(a.asInstanceOf[A]).asInstanceOf[Issue99Maybe2[B]]
     }
 
   }
@@ -68,7 +68,7 @@ object Issue99Maybe2 {
 
     def map[F[_], A, B](obj: Issue99Maybe2[A], cpsMonad: CpsMonad[F])(f: A => F[B]): F[Issue99Maybe2[B]] = obj match {
       case Absent => cpsMonad.pure(Absent)
-      case a: A   => cpsMonad.map(f(a))(b => b.asInstanceOf[Issue99Maybe2[B]])
+      case a      => cpsMonad.map(f(a.asInstanceOf[A]))(b => b.asInstanceOf[Issue99Maybe2[B]])
     }
 
   }

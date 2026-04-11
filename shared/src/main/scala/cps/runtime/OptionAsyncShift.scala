@@ -26,6 +26,14 @@ class OptionAsyncShift[T] extends AsyncShift[Option[T]]:
         }
       case None => m.pure(None)
 
+  def filterNot[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Option[T]] =
+    o match
+      case Some(t) =>
+        m.map(p(t)) { r =>
+          o.filterNot(_ => r)
+        }
+      case None => m.pure(None)
+
   def find[F[_]](o: Option[T], m: CpsMonad[F])(p: T => F[Boolean]): F[Option[T]] =
     o match
       case Some(t) => m.map(p(t))(r => if r then Some(t) else None)

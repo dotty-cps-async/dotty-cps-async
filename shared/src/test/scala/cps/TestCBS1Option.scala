@@ -105,6 +105,27 @@ class TestBS1Option:
      }
      assert(c.run() == Success(None))
 
+  @Test def optionFilterNot_some_true(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = Some(2)
+        y.filterNot(x => await(T1.cbi(x)) == 2)
+     }
+     assert(c.run() == Success(None))
+
+  @Test def optionFilterNot_some_false(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = Some(2)
+        y.filterNot(x => await(T1.cbi(x)) == 100)
+     }
+     assert(c.run() == Success(Some(2)))
+
+  @Test def optionFilterNot_none(): Unit =
+     val c = async[ComputationBound]{
+        val y: Option[Int] = None
+        y.filterNot(x => await(T1.cbi(x)) == 2)
+     }
+     assert(c.run() == Success(None))
+
   @Test def optionCollect_some_defined(): Unit =
      val c = async[ComputationBound]{
         val y: Option[Int] = Some(2)
