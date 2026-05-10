@@ -31,7 +31,7 @@ class TestBS1ShiftEither:
      }
      assert(c.run() == Success(2))
 
-  @Test def testEitherLeftForAll1(): Unit = 
+  @Test def testEitherLeftForAll1(): Unit =
      //implicit val printCode = cps.macroFlags.PrintCode
      //implicit val debugLevel = cps.macroFlags.DebugLevel(20)
      val c = async[ComputationBound]{
@@ -39,6 +39,27 @@ class TestBS1ShiftEither:
         a.left.forall{ _ == await(T1.cbs("A")) }
      }
      assert(c.run() == Success(true))
+
+  @Test def testEitherForAllLeftIsVacuouslyTrue(): Unit =
+     val c = async[ComputationBound]{
+        val a: Either[String,Int] = Left("A")
+        a.forall(_ == await(T1.cbi(0)))
+     }
+     assert(c.run() == Success(true))
+
+  @Test def testEitherForAllRightTrue(): Unit =
+     val c = async[ComputationBound]{
+        val a: Either[String,Int] = Right(5)
+        a.forall(_ == await(T1.cbi(5)))
+     }
+     assert(c.run() == Success(true))
+
+  @Test def testEitherForAllRightFalse(): Unit =
+     val c = async[ComputationBound]{
+        val a: Either[String,Int] = Right(5)
+        a.forall(_ == await(T1.cbi(0)))
+     }
+     assert(c.run() == Success(false))
 
 
 
