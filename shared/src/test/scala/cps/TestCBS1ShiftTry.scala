@@ -20,7 +20,7 @@ class TestBS1ShiftTry:
      assert(c.run() == Success(Success(2)))
 
 
-  @Test def testTryGetOrElse0(): Unit = 
+  @Test def testTryGetOrElse0(): Unit =
      //implicit val printCode = cps.macroFlags.PrintCode
      //implicit val debugLevel = cps.macroFlags.DebugLevel(20)
      val c = async[ComputationBound]{
@@ -30,6 +30,36 @@ class TestBS1ShiftTry:
         }
      }
      assert(c.run() == Success(0))
+
+  @Test def testTryRecoverMatched(): Unit =
+     val c = async[ComputationBound]{
+        val a: Try[Int] = Failure(new IllegalArgumentException("bad"))
+        a.recover{ case _: IllegalArgumentException => await(T1.cbi(42)) }
+     }
+     assert(c.run() == Success(Success(42)))
+
+  @Test def testTryRecoverUnmatchedPreservesFailure(): Unit =
+     val ex = new RuntimeException("boom")
+     val c = async[ComputationBound]{
+        val a: Try[Int] = Failure(ex)
+        a.recover{ case _: IllegalArgumentException => await(T1.cbi(42)) }
+     }
+     assert(c.run() == Success(Failure(ex)))
+
+  @Test def testTryRecoverWithMatched(): Unit =
+     val c = async[ComputationBound]{
+        val a: Try[Int] = Failure(new IllegalArgumentException("bad"))
+        a.recoverWith{ case _: IllegalArgumentException => Success(await(T1.cbi(7))) }
+     }
+     assert(c.run() == Success(Success(7)))
+
+  @Test def testTryRecoverWithUnmatchedPreservesFailure(): Unit =
+     val ex = new RuntimeException("boom")
+     val c = async[ComputationBound]{
+        val a: Try[Int] = Failure(ex)
+        a.recoverWith{ case _: IllegalArgumentException => Success(await(T1.cbi(7))) }
+     }
+     assert(c.run() == Success(Failure(ex)))
 
 /*
   @Test def testEitherGetOrElse1(): Unit = 
