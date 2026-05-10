@@ -101,6 +101,33 @@ class TestBS1ShiftUsing:
      assert(svR3.get.isClosed == true)
 
 
+  @Test def testUsingApplyClosesOnSuccess(): Unit =
+     val r = new TestResource("apply-success")
+     val c = async[ComputationBound]{
+         Using(r){ r =>
+             val q = await(T1.cbs(r.label))
+             r.log(q)
+             q
+         }
+     }
+     assert(c.run() == Success(Success("apply-success")))
+     assert(r.isClosed)
+
+  @Test def testUsingApplyClosesOnFailure(): Unit =
+     val r = new TestResource("apply-failure")
+     val c = async[ComputationBound]{
+         Using(r){ r =>
+             await(T1.cbs(r.label))
+             throw new RuntimeException("testUsingApplyClosesOnFailure")
+         }
+     }
+     val res = c.run()
+     assert(res.isSuccess, s"outer monad should be Success, got $res")
+     res match
+       case Success(inner) => assert(inner.isFailure, s"inner Try should be Failure, got $inner")
+       case _ => assert(false)
+     assert(r.isClosed, "resource leaked on failure path")
+
   @Test def testUsingResources4(): Unit =
      var svR2: Option[TestResource] = None;
      var svR3: Option[TestResource] = None;
