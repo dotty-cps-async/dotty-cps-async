@@ -90,7 +90,7 @@ class IndexedSeqAsyncShift[A, C[X] <: IndexedSeq[X] & IndexedSeqOps[X, C, C[X]],
           else run(n + 1)
         }
       else m.pure(-1)
-    run(0)
+    run(math.max(0, from))
 
   override def indexWhere[F[_]](c: CA, m: CpsMonad[F])(p: A => F[Boolean]): F[Int] =
     indexWhere(c, m)(p, 0)
