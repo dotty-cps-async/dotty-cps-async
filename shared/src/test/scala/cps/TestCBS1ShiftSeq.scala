@@ -59,12 +59,33 @@ class TestBS1ShiftSeq:
 */
 
 
-  @Test def testIndexWhereIndexed(): Unit = 
+  @Test def testIndexWhereIndexed(): Unit =
      val c = async[ComputationBound]{
         val seq = IndexedSeq("1234","3452","1","12","21","777777777")
         seq.indexWhere{ x => await(T1.cbt(x.charAt(0)=='7')) }
      }
      assert(c.run()==Success(5))
+
+  @Test def testIndexWhereIndexedFromHonored(): Unit =
+     val c = async[ComputationBound]{
+        val seq = IndexedSeq(1,2,3,4,3,5)
+        seq.indexWhere(x => await(T1.cbt(x == 3)), 3)
+     }
+     assert(c.run() == Success(4))
+
+  @Test def testIndexWhereIndexedFromBeyondEnd(): Unit =
+     val c = async[ComputationBound]{
+        val seq = IndexedSeq(1,2,3,4,3,5)
+        seq.indexWhere(x => await(T1.cbt(x == 3)), 10)
+     }
+     assert(c.run() == Success(-1))
+
+  @Test def testIndexWhereIndexedFromNegative(): Unit =
+     val c = async[ComputationBound]{
+        val seq = IndexedSeq(1,2,3,4,3,5)
+        seq.indexWhere(x => await(T1.cbt(x == 3)), -2)
+     }
+     assert(c.run() == Success(2))
 
   @Test def testSegmentLength(): Unit = 
      val c = async[ComputationBound]{
