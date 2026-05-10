@@ -81,6 +81,28 @@ class TestCBS1ShiftArrayOps:
             assert(false,"dropWhile result should be successed")
      }
 
+  @Test def testDropWhileAllMatch(): Unit =
+     val c = async[ComputationBound]{
+               Array(T1.cbi(1),T1.cbi(2),T1.cbi(3)).dropWhile(x => await(x) < 10)
+             }
+     c.run() match {
+        case Success(v) =>
+            assert(v.isEmpty, s"dropWhile when all match should be empty, got length ${v.length}")
+        case Failure(ex) =>
+            assert(false,"dropWhile result should be successed")
+     }
+
+  @Test def testDropWhileEmpty(): Unit =
+     val c = async[ComputationBound]{
+               Array.empty[ComputationBound[Int]].dropWhile(x => await(x) < 10)
+             }
+     c.run() match {
+        case Success(v) =>
+            assert(v.isEmpty)
+        case Failure(ex) =>
+            assert(false,"dropWhile on empty array should be successed")
+     }
+
   @Test def testExistsT(): Unit =
      val c = async[ComputationBound]{
                 Array(T1.cbi(1),T1.cbi(2),T1.cbi(3)).exists(x => await(x)==2)
