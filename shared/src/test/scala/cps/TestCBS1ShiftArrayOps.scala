@@ -272,6 +272,34 @@ class TestCBS1ShiftArrayOps:
      assert(r == 4)
    */
 
+  @Test def testLastIndexWhereEndPastLength(): Unit =
+     val c = async[ComputationBound]{
+          val arr = Array(1,2,3,4,5)
+          arr.lastIndexWhere(x => x > await(T1.cbi(3)), 100)
+     }
+     assert(c.run() == Success(4))
+
+  @Test def testLastIndexWhereEndInRange(): Unit =
+     val c = async[ComputationBound]{
+          val arr = Array(1,2,3,4,5)
+          arr.lastIndexWhere(x => x > await(T1.cbi(3)), 3)
+     }
+     assert(c.run() == Success(3))
+
+  @Test def testLastIndexWhereEndNegative(): Unit =
+     val c = async[ComputationBound]{
+          val arr = Array(1,2,3,4,5)
+          arr.lastIndexWhere(x => x > await(T1.cbi(3)), -1)
+     }
+     assert(c.run() == Success(-1))
+
+  @Test def testLastIndexWhereEmptyEndPastLength(): Unit =
+     val c = async[ComputationBound]{
+          val arr = Array.empty[Int]
+          arr.lastIndexWhere(x => x > await(T1.cbi(0)), 100)
+     }
+     assert(c.run() == Success(-1))
+
   /*
   bug in dotty: https://github.com/lampepfl/dotty/issues/17445
   @Test def testLastIndexWhere(): Unit =
