@@ -270,7 +270,7 @@ class ArrayOpsAsyncShift[A] extends AsyncShift[ArrayOps[A]] {
         monad.flatMap(p(e)) { v =>
           if (v) then monad.pure(i) else steps(view, i - 1)
         }
-    steps(arrOps.view, end)
+    steps(arrOps.view, math.min(end, arrOps.size - 1))
   }
 
   def partition[F[_]](arrOps: ArrayOps[A], monad: CpsMonad[F])(p: A => F[Boolean]): F[(Array[A], Array[A])] = {
