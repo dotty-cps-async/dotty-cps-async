@@ -100,7 +100,7 @@ class TestCBS1ShiftArrayOps:
         case Success(v) =>
             assert(v.isEmpty)
         case Failure(ex) =>
-            assert(false,"dropWhile on empty array should be successed")
+            assert(false,"dropWhile on empty array should be succeeded")
      }
 
   @Test def testExistsT(): Unit =
