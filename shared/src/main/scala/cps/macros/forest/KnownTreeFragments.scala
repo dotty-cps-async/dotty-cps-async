@@ -45,6 +45,13 @@ trait KnownTreeFragments[F[_], CT, CC <: CpsMonadContext[F]]:
   lazy val breaksClassSym = Symbol.classSymbol("scala.util.control.Breaks")
   lazy val breaksModuleSym = Symbol.classSymbol("scala.util.control.Breaks$")
 
+  /** Singleton type of the `scala.util.control.Breaks` companion. Used to match
+    * stable aliases of the singleton (e.g. `val b = Breaks; b.break()`), while
+    * still excluding `new Breaks` instances (whose static type is `Breaks`, not
+    * `Breaks.type`).
+    */
+  lazy val breaksModuleSingletonType = Ref.term(breaksModuleSym.companionModule.termRef).tpe
+
   lazy val breaksBreakSym = breaksClassSym.declaredMethod("break").head
   lazy val breaksBreakableSym = breaksClassSym.declaredMethod("breakable").head
 

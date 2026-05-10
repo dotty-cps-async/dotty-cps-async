@@ -34,9 +34,9 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         runNonLocalReturnsReturning(applyTerm, fun, targs, args)(owner)
       case funTypeApply @ TypeApply(obj, targs) =>
         handleFunTypeApply(applyTerm, funTypeApply, args, obj, targs, tails)(owner)
-      case Select(obj, _) if fun.symbol == breaksBreakSym && obj.symbol == breaksModuleSym.companionModule =>
+      case Select(obj, _) if fun.symbol == breaksBreakSym && obj.tpe <:< breaksModuleSingletonType =>
         runBreaksBreak(applyTerm)(owner)
-      case Select(obj, _) if fun.symbol == breaksBreakableSym && obj.symbol == breaksModuleSym.companionModule =>
+      case Select(obj, _) if fun.symbol == breaksBreakableSym && obj.tpe <:< breaksModuleSingletonType =>
         runBreaksBreakable(applyTerm, fun, args)(owner)
       case Select(obj, method) =>
         if (fun.symbol == logicalAndSym || fun.symbol == logicalOrSym) then handleBooleanAndOr(applyTerm, fun, obj, args)(owner)

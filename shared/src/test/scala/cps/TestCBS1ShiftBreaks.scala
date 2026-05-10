@@ -77,6 +77,21 @@ class TestBS1ShiftBreaks:
      assertEquals(3, sumBefore)
      assertEquals(0, sumAfter)
 
+  @Test def testBreakableThroughStableAlias(): Unit =
+     val b = Breaks
+     var beforeBreak = 0
+     var afterBreak = 0
+     val c = async[ComputationBound]{
+        b.breakable {
+           beforeBreak = await(T1.cbi(5))
+           b.break()
+           afterBreak = await(T1.cbi(99))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(5, beforeBreak)
+     assertEquals(0, afterBreak)
+
   @Test def testUserNonFatalCatchInsideBodyDoesNotSwallowBreak(): Unit =
      var caught = false
      var afterBreak = 0
