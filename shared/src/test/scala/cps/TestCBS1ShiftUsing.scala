@@ -117,9 +117,8 @@ class TestBS1ShiftUsing:
      val r = new TestResource("apply-failure")
      val c = async[ComputationBound]{
          Using(r){ r =>
-             val q = await(T1.cbs(r.label))
+             await(T1.cbs(r.label))
              throw new RuntimeException("testUsingApplyClosesOnFailure")
-             q
          }
      }
      val res = c.run()
