@@ -129,7 +129,7 @@ class ArrayOpsAsyncShift[A] extends AsyncShift[ArrayOps[A]] {
 
   def dropWhile[F[_]](arr: ArrayOps[A], monad: CpsMonad[F])(p: A => F[Boolean]): F[Array[A]] = {
     def skipWhile(it: Iterator[A], i: Int): F[Array[A]] =
-      if !it.hasNext then monad.pure(arr.slice(0, 1))
+      if !it.hasNext then monad.pure(arr.slice(0, 0))
       else
         val e = it.next
         monad.flatMap(p(e)) { v =>
