@@ -145,6 +145,9 @@ object AsyncShift extends AsyncShiftLowPriority3 {
   transparent inline given shiftedBoundary: BoundaryAsyncShift.type =
     BoundaryAsyncShift
 
+  transparent inline given shiftedBreaks: cps.runtime.util.control.BreaksAsyncShift.type =
+    cps.runtime.util.control.BreaksAsyncShift
+
   transparent inline given shiftedFutureCM: FutureCMAsyncShift =
     FutureCMAsyncShift
 
