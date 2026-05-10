@@ -32,3 +32,17 @@ class TestBS1ShiftBreaks:
      c.run() match
        case Failure(ex) => assertEquals("not a break", ex.getMessage)
        case other       => assert(false, s"expected Failure, got $other")
+
+  @Test def testBreakableHonoursSynchronousBreak(): Unit =
+     var beforeBreak = 0
+     var afterBreak = 0
+     val c = async[ComputationBound]{
+        Breaks.breakable {
+           beforeBreak = 7
+           if beforeBreak == 7 then Breaks.break()
+           afterBreak = await(T1.cbi(99))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(7, beforeBreak)
+     assertEquals(0, afterBreak)
