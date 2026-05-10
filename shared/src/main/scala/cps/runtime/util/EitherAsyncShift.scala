@@ -30,7 +30,7 @@ class EitherAsyncShift[A, B] extends AsyncShift[Either[A, B]]:
 
   def forall[F[_]](o: Either[A, B], m: CpsMonad[F])(p: (B) => F[Boolean]): F[Boolean] =
     o match
-      case Left(a)  => m.pure(false)
+      case Left(a)  => m.pure(true)
       case Right(b) => p(b)
 
   def foreach[F[_], U](o: Either[A, B], m: CpsMonad[F])(f: (B) => F[U]): F[Unit] =
