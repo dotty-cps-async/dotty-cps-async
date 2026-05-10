@@ -42,6 +42,24 @@ trait KnownTreeFragments[F[_], CT, CC <: CpsMonadContext[F]]:
   lazy val shiftedNonLocalReturnsSyncReturningSym =
     Symbol.classSymbol("cps.runtime.util.control.NonLocalReturnsAsyncShift$").declaredMethod("syncReturning").head
 
+  lazy val breaksClassSym = Symbol.classSymbol("scala.util.control.Breaks")
+  lazy val breaksModuleSym = Symbol.classSymbol("scala.util.control.Breaks$")
+
+  lazy val breaksBreakSym = breaksClassSym.declaredMethod("break").head
+  lazy val breaksBreakableSym = breaksClassSym.declaredMethod("breakable").head
+
+  lazy val shiftedBreaksAsyncShiftSym =
+    Symbol.classSymbol("cps.runtime.util.control.BreaksAsyncShift$")
+  lazy val shiftedBreaksAsyncShiftClassSym =
+    Symbol.classSymbol("cps.runtime.util.control.BreaksAsyncShift")
+
+  // methods are declared on the `class BreaksAsyncShift`, inherited by the object.
+  lazy val shiftedBreaksBreakSym = shiftedBreaksAsyncShiftClassSym.declaredMethod("break").head
+  lazy val shiftedBreaksBreakableSym = shiftedBreaksAsyncShiftClassSym.declaredMethod("breakable").head
+  lazy val shiftedBreaksSyncBreakableSym = shiftedBreaksAsyncShiftClassSym.declaredMethod("syncBreakable").head
+
+  lazy val shiftedBreaksObjectRef = Ref.term(shiftedBreaksAsyncShiftSym.companionModule.termRef)
+
   lazy val nonFatalUnapplySym = Symbol.classSymbol("scala.util.control.NonFatal$").declaredMethod("unapply").head
 
   lazy val nonFatalAndNotControlThrowableAsyncWrapperClassSym =

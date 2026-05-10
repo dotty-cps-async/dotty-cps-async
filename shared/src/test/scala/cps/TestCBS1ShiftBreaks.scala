@@ -4,7 +4,7 @@ import org.junit.Test
 import org.junit.Assert._
 
 import scala.util.{Success, Failure}
-import scala.util.control.Breaks
+import scala.util.control.{Breaks, NonFatal}
 
 import cps.testconfig.given
 
@@ -45,4 +45,52 @@ class TestBS1ShiftBreaks:
      }
      assert(c.run() == Success(()))
      assertEquals(7, beforeBreak)
+     assertEquals(0, afterBreak)
+
+  @Test def testBreakableHonoursBreak(): Unit =
+     var beforeBreak = 0
+     var afterBreak = 0
+     val c = async[ComputationBound]{
+        Breaks.breakable {
+           beforeBreak = await(T1.cbi(7))
+           Breaks.break()
+           afterBreak = await(T1.cbi(99))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(7, beforeBreak)
+     assertEquals(0, afterBreak)
+
+  @Test def testBreakableMultipleAwaitsBeforeBreak(): Unit =
+     var sumBefore = 0
+     var sumAfter = 0
+     val c = async[ComputationBound]{
+        Breaks.breakable {
+           sumBefore += await(T1.cbi(1))
+           sumBefore += await(T1.cbi(2))
+           Breaks.break()
+           sumAfter += await(T1.cbi(3))
+           sumAfter += await(T1.cbi(4))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(3, sumBefore)
+     assertEquals(0, sumAfter)
+
+  @Test def testUserNonFatalCatchInsideBodyDoesNotSwallowBreak(): Unit =
+     var caught = false
+     var afterBreak = 0
+     val c = async[ComputationBound]{
+        Breaks.breakable {
+           val v = await(T1.cbi(1))
+           try {
+              Breaks.break()
+           } catch {
+              case NonFatal(_) => caught = true
+           }
+           afterBreak = await(T1.cbi(99))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(false, caught)
      assertEquals(0, afterBreak)
