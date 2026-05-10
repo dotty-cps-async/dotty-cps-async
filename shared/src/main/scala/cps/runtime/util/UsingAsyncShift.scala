@@ -9,9 +9,7 @@ object UsingAsyncShift extends AsyncShift[Using.type]:
       resource: () => F[R]
   )(f: (R) => F[A])(implicit arg0: Using.Releasable[R]): F[Try[A]] = {
     m.flatMap(resource())(r =>
-      m.restore(
-        m.map(f(r))(x => { arg0.release(r); Success(x) })
-      )(e => m.pure(Failure(e)))
+      m.mapTry(m.withAction(f(r))(arg0.release(r)))(identity)
     )
   }
 
