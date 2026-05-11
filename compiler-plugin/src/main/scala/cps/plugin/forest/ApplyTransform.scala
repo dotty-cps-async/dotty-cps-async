@@ -108,6 +108,14 @@ object ApplyTransform {
       case Apply(Apply(TypeApply(throwReturnCn, targs2), List(arg2)), List(arg1))
           if (throwReturnCn.symbol == Symbols.requiredMethod("scala.util.control.NonLocalReturns.throwReturn")) =>
         NonLocalReturnsThrowReturnTransform.apply(term, owner, nesting, throwReturnCn, targs2, arg2, arg1)
+      case Apply(sel @ Select(obj, _), Nil)
+          if sel.symbol == Symbols.requiredClass("scala.util.control.Breaks").requiredMethod("break")
+            && isBreaksModuleQualifier(obj) =>
+        BreaksBreakTransform.apply(term, owner, nesting)
+      case Apply(sel @ Select(obj, _), List(arg))
+          if sel.symbol == Symbols.requiredClass("scala.util.control.Breaks").requiredMethod("breakable")
+            && isBreaksModuleQualifier(obj) =>
+        BreaksBreakableTransform.apply(term, owner, nesting, arg)
       case _ =>
         if (summon[CpsTopLevelContext].isBeforeInliner && atPhase(inliningPhase)(Inlines.needsInlining(term))) {
           val inlined = atPhase(inliningPhase)(Inlines.inlineCall(term))
@@ -119,6 +127,14 @@ object ApplyTransform {
 
     cpsTree
   }
+
+  /** True when `qual` is the `scala.util.control.Breaks` companion object or a
+    * stable alias of it (e.g. `val b = Breaks`), but false for per-instance
+    * `new Breaks` values whose static type is `Breaks` (the class), not
+    * `Breaks.type` (the module singleton). Per-instance shifting is out of scope.
+    */
+  private def isBreaksModuleQualifier(qual: Tree)(using Context): Boolean =
+    qual.tpe <:< Symbols.requiredModule("scala.util.control.Breaks").termRef
 
   def applyMArgs(term: Apply, owner: Symbol, nesting: Int, tail: List[ApplyArgList])(using Context, CpsTopLevelContext): CpsTree = {
     Log.trace(s"ApplyMArgs, term=${term.show}", nesting)
