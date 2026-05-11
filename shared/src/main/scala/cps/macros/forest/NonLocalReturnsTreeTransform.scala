@@ -58,16 +58,6 @@ trait NonLocalReturnsTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsCtx.log("runNonLocalReturnsReturning")
     }
     val paramsDescriptor = MethodParamsDescriptor(fun)
-    val substituteNonFatal = new TreeMap {
-      override def transformTree(tree: Tree)(owner: Symbol): Tree = {
-        tree match
-          case u @ Unapply(fun, implicits, patterns) if fun.symbol == nonFatalUnapplySym =>
-            val nFun = Select.unique(nonFatalAndNotControlThrowableAsyncWrapperCompanion, "unapply")
-            Unapply.copy(u)(nFun, implicits, patterns)
-          case _ =>
-            super.transformTree(tree)(owner)
-      }
-    }
     val nArgs = substituteNonFatal.transformTerms(args)(owner)
     val argRecords = O.buildApplyArgsRecords(paramsDescriptor, nArgs)(owner)
     // we have one arg which is lambda by definition of returning
