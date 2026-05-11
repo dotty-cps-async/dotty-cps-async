@@ -75,6 +75,23 @@ trait KnownTreeFragments[F[_], CT, CC <: CpsMonadContext[F]]:
   lazy val nonFatalAndNotControlThrowableAsyncWrapperCompanion =
     Ref.term(nonFatalAndNotControlThrowableAsyncWrapperClassSym.companionModule.termRef)
 
+  lazy val nonFatalAndNotControlThrowableAsyncWrapperUnapplyRef =
+    Select.unique(nonFatalAndNotControlThrowableAsyncWrapperCompanion, "unapply")
+
+  /** TreeMap that rewrites `case NonFatal(_)` extractors to use
+    * `NonFatalAndNotControlThrowableAsyncWrapper.unapply`, so a user catch inside a
+    * shifted `breakable` / `returning` body does not swallow the wrapped
+    * `ControlThrowable` we route through the monad.
+    */
+  lazy val substituteNonFatal: TreeMap = new TreeMap {
+    override def transformTree(tree: Tree)(owner: Symbol): Tree =
+      tree match
+        case u @ Unapply(fun, implicits, patterns) if fun.symbol == nonFatalUnapplySym =>
+          Unapply.copy(u)(nonFatalAndNotControlThrowableAsyncWrapperUnapplyRef, implicits, patterns)
+        case _ =>
+          super.transformTree(tree)(owner)
+  }
+
   lazy val logicalAndSym = defn.BooleanClass.declaredMethod("&&").head
   lazy val logicalOrSym = defn.BooleanClass.declaredMethod("||").head
   lazy val logicalNotSym = defn.BooleanClass.declaredMethod("unary_!").head
