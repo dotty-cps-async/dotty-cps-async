@@ -23,26 +23,10 @@ object NonLocalReturnsReturningTransform {
     */
   def apply(term: Apply, owner: Symbol, nesting: Int, targ: Tree, arg: Tree)(using Context, CpsTopLevelContext): CpsTree = {
 
-    val nonFatalUnapplySym = Symbols.requiredClass("scala.util.control.NonFatal$").requiredMethod("unapply")
-    val nonFatalAndNotControlThrowableAsyncWrapperObj = ref(
-      Symbols.requiredModule("cps.runtime.util.control.NonFatalAndNotControlThrowableAsyncWrapper")
-    )
     val nonLocalReturnsAsyncShift = Symbols.requiredModule("cps.runtime.util.control.NonLocalReturnsAsyncShift")
     val nonLocalReturns = Symbols.requiredModule("scala.util.control.NonLocalReturns")
 
-    val substituteNonFatal = new TreeMap {
-      override def transform(tree: Tree)(using Context): Tree = {
-        tree match
-          case u: UnApply if u.fun.symbol == nonFatalUnapplySym =>
-            val nFun = Select(nonFatalAndNotControlThrowableAsyncWrapperObj, "unapply".toTermName)
-            cpy.UnApply(u)(nFun, u.implicits, u.patterns)
-          // for scala-3.3.2 - add QuotePAtter  => ???
-          // case Apply()
-          case _ =>
-            super.transform(tree)
-      }
-    }
-    val nArg = substituteNonFatal.transform(arg)
+    val nArg = NonFatalSubstitution(arg)
 
     nArg match
       // case Inlined(call, bindings, expansion) =>

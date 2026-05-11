@@ -76,10 +76,15 @@ object ComputationBound {
    }
 
    def fromTry[A](t: Try[A]):ComputationBound[A] =
-      t match 
+      t match
         case Success(a) => Done(a)
         case Failure(e) => Error(e)
-        
+
+   def tryOp[A](op: => ComputationBound[A]): ComputationBound[A] =
+      try op
+      catch
+        case NonFatal(ex) => Error(ex)
+
    def eagerMemoize[T](f: ComputationBound[T]): ComputationBound[T] =
         spawn(f)
 
@@ -233,12 +238,12 @@ case class Thunk[T](thunk: ()=>ComputationBound[T]) extends ComputationBound[T] 
           thunk()
         catch
           //TODO: NonFatalObly instrean nonFatal
-          case NonFatal(e) => Error(e) 
+          case NonFatal(e) => Error(e)
         r match
           case Done(t) => f(Success(t))
           case Error(e) => f(Failure(e))
-          case Thunk(f1) => f1().flatMapTry(f)
-          case Wait(ref, f1) => Wait(ref, x => f1(x).flatMapTry(f))
+          case Thunk(f1) => ComputationBound.tryOp(f1()).flatMapTry(f)
+          case Wait(ref, f1) => Wait(ref, x => ComputationBound.tryOp(f1(x)).flatMapTry(f))
     }
      
 }
@@ -297,7 +302,7 @@ case class Wait[R,T](ref: AtomicReference[Option[Try[R]]], op: Try[R] => Computa
         Wait(ref, x => op(x) flatMap f)
 
   override def flatMapTry[S](f: Try[T]=>ComputationBound[S]): ComputationBound[S] =
-        Wait(ref, x => op(x).flatMapTry(f))       
+        Wait(ref, x => ComputationBound.tryOp(op(x)).flatMapTry(f))
 
   override def map[S](f: T=>S): ComputationBound[S] =
         Wait(ref, x => op(x).map(f) )
