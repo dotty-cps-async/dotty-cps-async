@@ -20,6 +20,7 @@
 *   Catch synchronous throws in JS `ComputationBound.flatMapTry` ([fbe7cc3](https://github.com/rssh/dotty-cps-async/commit/fbe7cc3c))
 *   `recoverWith`: use `applyOrElse` to avoid double pattern match ([51cc54d](https://github.com/rssh/dotty-cps-async/commit/51cc54d9))
 *   Fix typo in `dropWhile` empty-array assertion message ([95545fb](https://github.com/rssh/dotty-cps-async/commit/95545fbd))
+*   Fix `PoorManEffect` test Runner deadlock when carrier exits between awaits ([9ce23c2](https://github.com/rssh/dotty-cps-async/commit/9ce23c26))
 
 ### Build
 
