@@ -27,6 +27,10 @@ object PoorManEffect {
     def checkSubmitted[T](submitId: Long): Option[Try[T]]
     def forgetSubmitted(submitId: Long): Unit
     def listenSubmitted[T](submitId: Long): CompletableFuture[T]
+    /** True while at least one carrier thread is actively processing the queue. */
+    def isActive: Boolean
+    /** Defensive backstop: ensure at least one carrier is running. */
+    def activate(): Unit
   }
 
   case class Pure[T](t: T) extends PoorManEffect[T]
@@ -86,6 +90,7 @@ object PoorManEffect {
     val waiters: TrieMap[Long,CompletableFuture[Any]] = TrieMap()
     val processEntryCounter = new AtomicInteger(0)
     val nThunksInProcess = new AtomicInteger(0)
+    val activeCarriers = new AtomicInteger(0)
     val submitWaiter = new AnyRef()
 
     override def submitAndForget[T](pe: PoorManEffect[T]): Unit = {
@@ -128,6 +133,14 @@ object PoorManEffect {
          throw new IllegalArgumentException(s"invalid submitId=${submitId}")
     }
 
+    override def isActive: Boolean = activeCarriers.get() > 0
+
+    override def activate(): Unit = {
+      if (activeCarriers.get() == 0) {
+        Thread.startVirtualThread { () => process() }
+      }
+    }
+
     private def nextId: Long = {
       currentWaitId.incrementAndGet()
     }
@@ -145,63 +158,51 @@ object PoorManEffect {
 
 
     def process(): Unit = {
-      //println(s"starting process thread ${Thread.currentThread().getId()}")
-      @volatile var blocked: Boolean = false
       @volatile var finished: Boolean = false
       processEntryCounter.incrementAndGet()
-      BlockContext.withBlockContext(
+      activeCarriers.incrementAndGet()
+      try BlockContext.withBlockContext(
         new BlockContext {
           override def blockOn[T](thunk: => T)(implicit permission: CanAwait): T = {
             if (permission == null) {
               throw new NullPointerException("null permission")
             }
-            if (!blocked) {
-              blocked = true
-              val nextThread = Thread.startVirtualThread {
-                () => {
-                  process()
-                }
-              }
+            // We are about to park. If no other carrier remains, spawn a replacement
+            // so the runQueue keeps moving. After the thunk returns (we unblocked),
+            // step back in as an active carrier.
+            if (activeCarriers.decrementAndGet() == 0) {
+              Thread.startVirtualThread { () => process() }
             }
-            val retval = try {
-              thunk
-            } finally {
+            try thunk
+            finally {
+              activeCarriers.incrementAndGet()
               submitWaiter.synchronized {
                 submitWaiter.notifyAll()
               }
             }
-            retval
           }
         }) {
-        while (!finished && !blocked) {
-          while(runQueue.isEmpty && !blocked && nThunksInProcess.get() > 0) {
+        while (!finished) {
+          while (runQueue.isEmpty && nThunksInProcess.get() > 0) {
             submitWaiter.synchronized {
-                if (runQueue.isEmpty && !blocked && nThunksInProcess.get() > 0) {
-                   submitWaiter.wait()
-                }
+              if (runQueue.isEmpty && nThunksInProcess.get() > 0) {
+                submitWaiter.wait()
+              }
             }
           }
-          while (!runQueue.isEmpty && !blocked) {
-            //val v = runQueue.dequeue()
+          while (!runQueue.isEmpty) {
             val v = runQueue.poll()
             if (v != null) {
-              //
               v.pe match
                 case Pure(t) =>
                   setWaiterResult(v.id, Success(t))
                 case Error(e) =>
                   setWaiterResult(v.id, Failure(e))
                 case Thunk(th) =>
-                  // here we can have call of block-context.
                   nThunksInProcess.incrementAndGet()
                   try {
-                    val r = try {
-                      th(this)
-                    } catch {
-                      case NonFatal(ex) =>
-                        Error(ex)
-                    }
-                    // execution can be moved to be processed in the other virtual thread.
+                    val r = try th(this)
+                    catch { case NonFatal(ex) => Error(ex) }
                     runQueue.add(EvalRecord(r, v.id))
                     submitWaiter.synchronized {
                       submitWaiter.notifyAll()
@@ -211,16 +212,14 @@ object PoorManEffect {
                   }
             }
           }
-          if (!blocked) {
-            if (runQueue.isEmpty && nThunksInProcess.get() == 0) {
-              finished = true
-            }
+          if (runQueue.isEmpty && nThunksInProcess.get() == 0) {
+            finished = true
           }
         }
+      } finally {
+        activeCarriers.decrementAndGet()
         processEntryCounter.decrementAndGet()
-        //println(s"exiting process thread ${Thread.currentThread().getId()} blocked=${blocked}")
       }
-
     }
 
 
@@ -308,18 +307,22 @@ class PoorManEffectRuntimeAwait(rt:PoorManEffect.RunAPI) extends CpsRuntimeAwait
   override def await[A](fa: PoorManEffect[A])(ctx: CpsTryMonadContext[PoorManEffect]): A = {
     val id = rt.submit(fa)
     val cf = rt.listenSubmitted[A](id)
-    // here execution of main loop of runner.process will be moved to other virtual thread.
-    blocking{
-      val retval = try
-                      cf.get()
-                   catch
-                     case  ex: ExecutionException =>
-                       println("PoorManEffectRuntimeAwait.await: ExecutionException: "+ex.getCause())
-                       throw ex.getCause()
-                     finally
-                       println(s"PoorManEffectRuntimeAwait.await: forgetSubmitted ${id} because await is finished")
-                       rt.forgetSubmitted(id)
-      retval
+    // Carrier-counting in Runner.blockOn is the primary mechanism keeping the queue moving
+    // while we are parked. The timeout-poll here is a defensive backstop for rare races.
+    blocking {
+      try {
+        var retval: A | Null = null
+        while (!cf.isDone) {
+          try retval = cf.get(500, TimeUnit.MILLISECONDS)
+          catch
+            case ex: ExecutionException =>
+              throw ex.getCause()
+            case _: TimeoutException =>
+              if (!rt.isActive) rt.activate()
+        }
+        if (retval == null) cf.get().asInstanceOf[A]
+        else retval.asInstanceOf[A]
+      } finally rt.forgetSubmitted(id)
     }
   }
 
