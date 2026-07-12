@@ -67,7 +67,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:shared=github://rssh/dotty-cps-async/master#shared",
       "-source-links:js=github://rssh/dotty-cps-async/master#js"
     ),
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.21.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13),
     crossScalaVersions := Seq(dottyVersion, "3.8.2", "3.8.3"),
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaFailOnNoPrevious := false
@@ -140,8 +140,8 @@ lazy val compilerPlugin = project
     libraryDependencies ++= Seq(
       "org.scala-lang" %% "scala3-compiler" % scalaVersion.value % "provided",
       "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
-      ("org.scala-js" %% "scalajs-linker" % "1.21.0").cross(CrossVersion.for3Use2_13) % "test",
-      ("org.scala-js" %% "scalajs-env-nodejs" % "1.4.0").cross(CrossVersion.for3Use2_13) % "test"
+      ("org.scala-js" %% "scalajs-linker" % "1.22.0").cross(CrossVersion.for3Use2_13) % "test",
+      ("org.scala-js" %% "scalajs-env-nodejs" % "1.6.0").cross(CrossVersion.for3Use2_13) % "test"
     ),
     crossVersion := CrossVersion.full,
     crossScalaVersions := Seq("3.3.7", "3.8.2", "3.8.3"),
@@ -189,7 +189,7 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
   )
   .jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.21.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13),
     mimaFailOnNoPrevious := false,
     Test / unmanagedSourceDirectories ++= Seq(
       baseDirectory.value / ".." / ".." / "js" / "src" / "test" / "scala"
@@ -216,7 +216,7 @@ lazy val logic = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   )
   .jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.21.0" % Test).cross(CrossVersion.for3Use2_13)
+    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13)
   )
   .nativeSettings(
     libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
