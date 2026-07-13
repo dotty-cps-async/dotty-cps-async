@@ -25,7 +25,7 @@ copyright = '2020-{}, Ruslan Shevchenko'.format(currentYear)
 author = 'Ruslan Shevchenko'
 
 # The full version, including alpha/beta/rc tags
-release = '1.2.0'
+release = '1.3.4'
 
 
 # -- General configuration ---------------------------------------------------
