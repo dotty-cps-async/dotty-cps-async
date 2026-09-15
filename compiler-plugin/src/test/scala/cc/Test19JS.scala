@@ -14,7 +14,7 @@ class Test19JS {
   def testCompileAndRunExample2(): Unit = {
     val dotcInvocations = new DotcInvocations(false)
 
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     println(s"currentClasspath=${currentClasspath.split(":").mkString("\n")}")
     val filteredClasspath = currentClasspath.split(":").filterNot{
       x => x.contains("scalajs") && !(x.contains("scalajs-library"))
@@ -30,7 +30,7 @@ class Test19JS {
     val jsLinkOut = "testdata/set19js/1-linkout"
 
     val reporter = dotcInvocations.compileFilesInDirsWithFullArgs(List(inDir),  outDir,
-      List("-scalajs","-usejavacp","-d", outDir)
+      List("-scalajs","-classpath", DotcInvocations.testClassPath, "-d", outDir)
     )
 
     println(s"summary: ${reporter.summary}, errorCount: ${reporter.errorCount}")

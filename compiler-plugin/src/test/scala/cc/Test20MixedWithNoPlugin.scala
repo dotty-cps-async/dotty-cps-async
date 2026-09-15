@@ -8,7 +8,7 @@ class Test20MixedWithNoPlugin {
   @Test
   def test20M1(): Unit = {
     val m1Out = "testdata/set20withNoPlugin/out-m1"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     val m1InvocationArgsCmLib = DotcInvocationArgs(outDir = Some(m1Out))
     val classpath1 = s"${m1Out}:${currentClasspath}"
     val secondInvokationArgs = m1InvocationArgsCmLib.copy(extraDotcArgs = List("-classpath", classpath1) ++ m1InvocationArgsCmLib.extraDotcArgs)
@@ -23,7 +23,7 @@ class Test20MixedWithNoPlugin {
   @Test
   def test20M2(): Unit = {
     val m2Out = "testdata/set20withNoPlugin/out-m2"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     // accidently compile library without plugin
     val invocationArgsCmLib = DotcInvocationArgs(outDir = Some(m2Out), usePlugin = false)
     val classpath1 = s"${m2Out}:${currentClasspath}"
@@ -48,7 +48,7 @@ class Test20MixedWithNoPlugin {
   @Test
   def test20M3(): Unit = {
     val m3Out = "testdata/set20withNoPlugin/out-m3"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     val invocationArgsCmLib = DotcInvocationArgs(outDir = Some(m3Out))
     val classpath1 = s"${m3Out}:${currentClasspath}"
 
@@ -71,7 +71,7 @@ class Test20MixedWithNoPlugin {
   def test20M4(): Unit = {
     // both invocations without plugin
     val m4Out = "testdata/set20withNoPlugin/out-m4"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     val invocationArgsCmLib = DotcInvocationArgs(outDir = Some(m4Out), usePlugin = false)
     val classpath1 = s"${m4Out}:${currentClasspath}"
     val secondInvokationArgs = invocationArgsCmLib.copy(
@@ -95,7 +95,7 @@ class Test20MixedWithNoPlugin {
   def test20M5(): Unit = {
     // cm-lib without plugin, local-direct-call with plugin
     val m5Out = "testdata/set20withNoPlugin/out-m5"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     val invocationArgsCmLib = DotcInvocationArgs(outDir = Some(m5Out), usePlugin = false)
     val classpath1 = s"${m5Out}:${currentClasspath}"
     val secondInvokationArgs = invocationArgsCmLib.copy(
@@ -117,7 +117,7 @@ class Test20MixedWithNoPlugin {
   def test20M6(): Unit = {
     // cm-lib with plugin, local-direct-call without plugin
     val m6Out = "testdata/set20withNoPlugin/out-m6"
-    val currentClasspath = System.getProperty("java.class.path")
+    val currentClasspath = DotcInvocations.testClassPath
     val invocationArgsCmLib = DotcInvocationArgs(outDir = Some(m6Out))
     val classpath1 = s"${m6Out}:${currentClasspath}"
     val secondInvokationArgs = invocationArgsCmLib.copy(

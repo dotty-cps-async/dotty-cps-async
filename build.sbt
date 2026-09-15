@@ -3,6 +3,50 @@ val dottyVersion = "3.3.8"
 
 import scala.scalanative.build._
 
+// sbt-site dropped its Sphinx generator, so drive sphinx-build directly.
+lazy val sphinxSourceDirectory = settingKey[File]("Source directory of the Sphinx documentation.")
+lazy val sphinxTarget = settingKey[File]("Output directory of the generated Sphinx HTML.")
+@transient lazy val sphinxGenerate = taskKey[File]("Run sphinx-build to generate the HTML documentation.")
+
+val sphinxSettings = Seq(
+  sphinxSourceDirectory := baseDirectory.value / "docs",
+  sphinxTarget := target.value / "sphinx" / "html",
+  sphinxGenerate := {
+    val src = sphinxSourceDirectory.value
+    val out = sphinxTarget.value
+    val log = streams.value.log
+    val release = version.value
+    // conf.py takes `version` as the short x.y one, as the old sbt-site plugin passed it
+    val shortVersion = release match {
+      case VersionNumber(Seq(x, y, _*), _, _) => s"$x.$y"
+      case _                                  => release
+    }
+    IO.createDirectory(out)
+    val cmd = Seq(
+      "sphinx-build",
+      "-b",
+      "html",
+      "-D",
+      s"version=$shortVersion",
+      "-D",
+      s"release=$release",
+      src.getAbsolutePath,
+      out.getAbsolutePath
+    )
+    log.info(cmd.mkString(" "))
+    // sphinx-build writes its warnings to stderr; failure is signalled by the exit code
+    val plog = scala.sys.process.ProcessLogger(log.info(_), log.warn(_))
+    val rc = scala.sys.process.Process(cmd) ! plog
+    if (rc != 0) sys.error(s"sphinx-build failed with exit code $rc")
+    out
+  },
+  siteMappings ++= Def.uncached {
+    val conv = fileConverter.value
+    val out = sphinxGenerate.value
+    Path.allSubpaths(out).toSeq.map { case (f, p) => (conv.toVirtualFile(f.toPath): xsbti.HashedVirtualFileRef, p) }
+  }
+)
+
 ThisBuild / version := "1.3.4"
 ThisBuild / versionScheme := Some("semver-spec")
 ThisBuild / publishTo := localStaging.value
@@ -16,8 +60,8 @@ val sharedSettings = Seq(
 lazy val root = project
   .in(file("."))
   .aggregate(cps.js, cps.jvm, cps.native, compilerPlugin, cpsLoomAddOn, logic.jvm, logic.js, logic.native)
+  .settings(sphinxSettings)
   .settings(
-    Sphinx / sourceDirectory := baseDirectory.value / "docs",
     SiteScaladocPlugin.scaladocSettings(CpsJVM, cps.jvm / Compile / packageDoc / mappings, "api/jvm"),
     SiteScaladocPlugin.scaladocSettings(CpsJS, cps.js / Compile / packageDoc / mappings, "api/js"),
     SiteScaladocPlugin.scaladocSettings(CpsNative, cps.native / Compile / packageDoc / mappings, "api/native"),
@@ -28,7 +72,7 @@ lazy val root = project
     scalaVersion := dottyVersion,
     crossScalaVersions := Seq()
   )
-  .enablePlugins(SphinxPlugin, SiteScaladocPlugin, GhpagesPlugin)
+  .enablePlugins(SiteScaladocPlugin, GhpagesPlugin)
   .disablePlugins(MimaPlugin)
 
 lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
@@ -67,14 +111,14 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:shared=github://rssh/dotty-cps-async/master#shared",
       "-source-links:js=github://rssh/dotty-cps-async/master#js"
     ),
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += "org.scala-js" % "scalajs-junit-test-runtime_2.13" % "1.22.0" % Test,
     crossScalaVersions := Seq(dottyVersion, "3.8.3", "3.8.4"),
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaFailOnNoPrevious := false
   )
   .nativeSettings(
-    libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
-    addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full)
+    libraryDependencies += "org.scala-native" %% "junit-runtime" % nativeVersion % Test,
+    addCompilerPlugin(("org.scala-native" % "junit-plugin" % nativeVersion).cross(CrossVersion.full).platform(Platform.jvm))
     // nativeConfig ~= {
     //    _.withSourceLevelDebuggingConfig(_.enableAll) // enable generation of debug informations
     //    .withOptimize(false)  // disable Scala Native optimizer
@@ -153,7 +197,14 @@ lazy val compilerPlugin = project
     //        "-explain"
     //      )
     // },
-    Test / fork := true
+    Test / fork := true,
+    // sbt 2 starts the forked test JVM with only its own test worker on java.class.path,
+    // while the tests invoke dotc on the test classpath -- so hand it over explicitly.
+    Test / javaOptions += {
+      val conv = fileConverter.value
+      val cp = (Test / fullClasspath).value.map(e => conv.toPath(e.data).toFile.getAbsolutePath)
+      s"-Dcps.test.classpath=${cp.mkString(java.io.File.pathSeparator)}"
+    }
   )
 
 lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatform)
@@ -167,7 +218,8 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
   .settings(
     name := "dotty-cps-compiler-plugin-tests",
     libraryDependencies ++= Seq(
-      "org.scala-lang" %% "scala3-compiler" % scalaVersion.value % "provided",
+      // the compiler itself is a jvm artifact, also on the js/native platforms
+      ("org.scala-lang" %% "scala3-compiler" % scalaVersion.value % "provided").platform(Platform.jvm),
       "com.github.sbt" % "junit-interface" % "0.13.3" % "test"
     ),
     Compile / unmanagedSourceDirectories := Seq(),
@@ -175,7 +227,9 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
       baseDirectory.value / ".." / ".." / "shared" / "src" / "test" / "scala"
     ),
     Test / scalacOptions ++= {
-      val jar = (compilerPlugin / Compile / packageBin).value
+      // sbt 2 hands out virtual file refs, the compiler wants a real path
+      val conv = fileConverter.value
+      val jar = conv.toPath((compilerPlugin / Compile / packageBin).value).toFile
       Seq(s"-Xplugin:${jar.getAbsolutePath}", s"-Jdummy=${jar.lastModified}", "-color:never", "-explain")
     },
     crossScalaVersions := Seq("3.3.8", "3.8.3", "3.8.4")
@@ -189,7 +243,7 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
   )
   .jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13),
+    libraryDependencies += "org.scala-js" % "scalajs-junit-test-runtime_2.13" % "1.22.0" % Test,
     mimaFailOnNoPrevious := false,
     Test / unmanagedSourceDirectories ++= Seq(
       baseDirectory.value / ".." / ".." / "js" / "src" / "test" / "scala"
@@ -197,8 +251,8 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
     Test / unmanagedSources / excludeFilter := "TestSF1W1.scala" || "TestSL3.scala" || "TestSF4.scala"
   )
   .nativeSettings(
-    libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
-    addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full),
+    libraryDependencies += "org.scala-native" %% "junit-runtime" % nativeVersion % Test,
+    addCompilerPlugin(("org.scala-native" % "junit-plugin" % nativeVersion).cross(CrossVersion.full).platform(Platform.jvm)),
     Test / unmanagedSourceDirectories ++= Seq(
       baseDirectory.value / ".." / ".." / "native" / "src" / "test" / "scala"
     ),
@@ -216,9 +270,9 @@ lazy val logic = crossProject(JSPlatform, JVMPlatform, NativePlatform)
   )
   .jsSettings(
     scalaJSUseMainModuleInitializer := true,
-    libraryDependencies += ("org.scala-js" %% "scalajs-junit-test-runtime" % "1.22.0" % Test).cross(CrossVersion.for3Use2_13)
+    libraryDependencies += "org.scala-js" % "scalajs-junit-test-runtime_2.13" % "1.22.0" % Test
   )
   .nativeSettings(
-    libraryDependencies += "org.scala-native" %%% "junit-runtime" % nativeVersion % Test,
-    addCompilerPlugin("org.scala-native" % "junit-plugin" % nativeVersion cross CrossVersion.full)
+    libraryDependencies += "org.scala-native" %% "junit-runtime" % nativeVersion % Test,
+    addCompilerPlugin(("org.scala-native" % "junit-plugin" % nativeVersion).cross(CrossVersion.full).platform(Platform.jvm))
   )
