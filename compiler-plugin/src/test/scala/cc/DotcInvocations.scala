@@ -96,7 +96,7 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
   }
 
   private def runJVM(outDir: String, mainClass: String, timeout: FiniteDuration = 1.minute): (Int, String) = {
-    val classpath = s"$outDir:${System.getProperty("java.class.path")}"
+    val classpath = s"$outDir:${DotcInvocations.testClassPath}"
     DotcInvocations.runJVMInClasspath(mainClass, classpath, timeout)
   }
 
@@ -140,7 +140,9 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     if (scalaJs) {
       List("-classpath", DotcInvocations.currentJsClasspath)
     } else {
-      List("-usejavacp")
+      // not -usejavacp: under sbt 2 the forked test JVM is started with only the
+      // test worker on its classpath, see DotcInvocations.testClassPath
+      List("-classpath", DotcInvocations.testClassPath)
     }
   }
 
@@ -160,6 +162,14 @@ case class DotcInvocationArgs(
 object DotcInvocations {
 
   import org.junit.Assert.*
+
+  /** Classpath of the test run, to be passed on to the compiler invocations below.
+    *
+    * sbt 2 starts the forked test JVM with only its own test worker on `java.class.path` and hands
+    * the test classpath to a classloader instead, so the build passes it in explicitly.
+    */
+  val testClassPath: String =
+    Option(System.getProperty("cps.test.classpath")).getOrElse(System.getProperty("java.class.path"))
 
   val defaultCompileOpts: List[String] = {
     // note, that -Ycheck:all is not included here, because it is added conditionally
@@ -264,7 +274,7 @@ object DotcInvocations {
       dependency.compiledFlag.isAlreadyCompiled = true
       println("-----finish common compilation-----")
     }
-    val baseClassPath = if (invocationArgs.useScalaJsLib) currentJsClasspath else System.getProperty("java.class.path")
+    val baseClassPath = if (invocationArgs.useScalaJsLib) currentJsClasspath else DotcInvocations.testClassPath
     val classpath1 = s"${dependency.outDir}:${baseClassPath}"
     val secondOutDir = s"${dirname}-classes"
     val secondInvokationArgs = invocationArgs.copy(
@@ -333,7 +343,7 @@ object DotcInvocations {
 
   private def currentJsClasspath: String = {
     // substitue the jvm cps classes to js cps classes
-    val classpath = System.getProperty("java.class.path")
+    val classpath = DotcInvocations.testClassPath
     val jsClasspath =
       classpath.replaceAll("dotty-cps-async/jvm/target/scala-3.3.3/classes", "dotty-cps-async/js/target/scala-3.3.3/classes")
     jsClasspath
