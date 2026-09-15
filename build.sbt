@@ -3,50 +3,6 @@ val dottyVersion = "3.3.8"
 
 import scala.scalanative.build._
 
-// sbt-site dropped its Sphinx generator, so drive sphinx-build directly.
-lazy val sphinxSourceDirectory = settingKey[File]("Source directory of the Sphinx documentation.")
-lazy val sphinxTarget = settingKey[File]("Output directory of the generated Sphinx HTML.")
-@transient lazy val sphinxGenerate = taskKey[File]("Run sphinx-build to generate the HTML documentation.")
-
-val sphinxSettings = Seq(
-  sphinxSourceDirectory := baseDirectory.value / "docs",
-  sphinxTarget := target.value / "sphinx" / "html",
-  sphinxGenerate := {
-    val src = sphinxSourceDirectory.value
-    val out = sphinxTarget.value
-    val log = streams.value.log
-    val release = version.value
-    // conf.py takes `version` as the short x.y one, as the old sbt-site plugin passed it
-    val shortVersion = release match {
-      case VersionNumber(Seq(x, y, _*), _, _) => s"$x.$y"
-      case _                                  => release
-    }
-    IO.createDirectory(out)
-    val cmd = Seq(
-      "sphinx-build",
-      "-b",
-      "html",
-      "-D",
-      s"version=$shortVersion",
-      "-D",
-      s"release=$release",
-      src.getAbsolutePath,
-      out.getAbsolutePath
-    )
-    log.info(cmd.mkString(" "))
-    // sphinx-build writes its warnings to stderr; failure is signalled by the exit code
-    val plog = scala.sys.process.ProcessLogger(log.info(_), log.warn(_))
-    val rc = scala.sys.process.Process(cmd) ! plog
-    if (rc != 0) sys.error(s"sphinx-build failed with exit code $rc")
-    out
-  },
-  siteMappings ++= Def.uncached {
-    val conv = fileConverter.value
-    val out = sphinxGenerate.value
-    Path.allSubpaths(out).toSeq.map { case (f, p) => (conv.toVirtualFile(f.toPath): xsbti.HashedVirtualFileRef, p) }
-  }
-)
-
 ThisBuild / version := "1.3.4"
 ThisBuild / versionScheme := Some("semver-spec")
 ThisBuild / publishTo := localStaging.value
@@ -60,7 +16,6 @@ val sharedSettings = Seq(
 lazy val root = project
   .in(file("."))
   .aggregate(cps.js, cps.jvm, cps.native, compilerPlugin, cpsLoomAddOn, logic.jvm, logic.js, logic.native)
-  .settings(sphinxSettings)
   .settings(
     SiteScaladocPlugin.scaladocSettings(CpsJVM, cps.jvm / Compile / packageDoc / mappings, "api/jvm"),
     SiteScaladocPlugin.scaladocSettings(CpsJS, cps.js / Compile / packageDoc / mappings, "api/js"),
@@ -72,7 +27,7 @@ lazy val root = project
     scalaVersion := dottyVersion,
     crossScalaVersions := Seq()
   )
-  .enablePlugins(SiteScaladocPlugin, GhpagesPlugin)
+  .enablePlugins(SphinxPlugin, SiteScaladocPlugin, GhpagesPlugin)
   .disablePlugins(MimaPlugin)
 
 lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
