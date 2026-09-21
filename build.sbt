@@ -153,6 +153,9 @@ lazy val compilerPlugin = project
     //      )
     // },
     Test / fork := true,
+    // These tests compile fixtures from testdata outside sbt's tracked sources.
+    // Always run them so fixture-only edits cannot reuse a successful test result.
+    Test / test := (Test / testOnly).evaluated,
     // sbt 2 starts the forked test JVM with only its own test worker on java.class.path,
     // while the tests invoke dotc on the test classpath -- so hand it over explicitly.
     Test / javaOptions += {
