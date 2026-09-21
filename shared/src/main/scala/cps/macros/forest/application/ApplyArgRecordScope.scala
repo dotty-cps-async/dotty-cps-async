@@ -3,7 +3,6 @@ package cps.macros.forest.application
 import scala.annotation.tailrec
 import scala.quoted.*
 import scala.collection.immutable.Queue
-import scala.util.control.NonFatal
 import cps.*
 import cps.macros.*
 import cps.macros.common.*
@@ -288,25 +287,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         cpsBody.syncOrigin match
           case Some(syncBody) =>
             if (cpsBody.isChanged) then
-              // for lts variant
-              if (term.tpe.isContextFunctionType && !allowUncontext) then {
-                if (true) then {
-                  generateContextualMethodTypeViaReflection(params, paramNames, paramTypes, syncBody)
-                } else {
-                  throw MacroError(
-                    "Can't transform context function: TastyAPI in scala-lts don't support this yet.\n" +
-                      "Note, that if you can use non-lts scala version, than this case is supported in dotty-cps-async-next",
-                    posExpr(term)
-                  )
-                }
-              } else
-                val mt = MethodType(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
-                Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
-              // 3.5+
-              // val methodKind = if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
-              // val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
-              // Lambda(owner, mt,
-              //   (owner,args) => changeArgs(params,args,syncBody,owner).changeOwner(owner))
+              val methodKind =
+                if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
+              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
+              Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
             else term
           case None =>
             if (existsLambdaUnshift) then
@@ -325,89 +309,6 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
             else throw MacroError(s"Internal error: unshift is called when it not exists", term.asExpr)
       else term
-
-    /** Called inside scala-conpiler 3.7.x when macro is compiled by 3.3.x
-      * @return
-      */
-    def generateContextualMethodTypeViaReflection(
-        params: List[ValDef],
-        paramNames: List[String],
-        paramTypes: List[TypeRepr],
-        syncBody: Term
-    ): Term = {
-      // below is the code for 3.6+ version,
-      // val methodKind =
-      //  if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
-      // val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
-      //  + Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
-      // below is the same via exception
-      val methodKindClass =
-        try {
-          Class.forName("scala.quoted.Quotes$reflectModule$MethodTypeKind")
-        } catch {
-          case NonFatal(ex) =>
-            throw MacroError(
-              "Can't transform context function: TastyAPI in scala-3.3.6 don't support this yet.\n" +
-                "Note, that we will be able to handle this with scala-3.7.x",
-              posExpr(term)
-            )
-        }
-      val mtMethods = quotes.reflect.MethodTypeMethods
-      val methodKind = {
-        val methodTypeKindMethod =
-          try {
-            mtMethods.getClass.getDeclaredMethod("methodTypeKind", classOf[java.lang.Object])
-          } catch {
-            case NonFatal(ex) =>
-              throw MacroError(
-                "Can't get methodTypeKind method from scala reflect API, looks like this version of the Scala compiler is not supported\n" +
-                  s"method not found: quotes.reflect.MethodTypeMethods.methodTypeKind(mt), ex: $ex",
-                posExpr(term)
-              )
-          }
-        val contextualExtractorSym = Symbol.requiredModule("cps.macros.misc.ContextualExtractor")
-        val contextFunSym = contextualExtractorSym
-          .memberMethod("contextFun")
-          .headOption
-          .getOrElse(
-            throw MacroError("Have no contextFun method in ContextualExtractor", posExpr(term))
-          )
-        val ptpe = Ref(contextualExtractorSym).tpe.memberType(contextFunSym)
-        ptpe match
-          case mt: MethodType =>
-            try methodTypeKindMethod.invoke(mtMethods, mt)
-            catch
-              case NonFatal(ex) =>
-                throw MacroError(
-                  "Can't get MethodTypeKind from methodTypeKind method, looks like this version of the Scala compiler is not supported\n" +
-                    s"methodTypeKind: quotes.reflect.MethodTypeMethods.methodTypeKind(mt), ex: $ex",
-                  posExpr(term)
-                )
-          case other =>
-            throw MacroError(
-              s"Internal Erropr: cps.macros.misc.ContextualExtractor.contextFun type is not MethodType, but $other",
-              posExpr(term)
-            )
-      }
-      val mtModule = quotes.reflect.MethodType
-      val mtApply = mtModule.getClass.getDeclaredMethod(
-        "apply",
-        methodKindClass,
-        classOf[List[String]],
-        classOf[Function1[?, ?]],
-        classOf[Function1[?, ?]]
-      )
-      val mt = mtApply
-        .invoke(
-          mtModule,
-          methodKind,
-          paramNames,
-          (m: MethodType) => paramTypes,
-          (m: MethodType) => syncBody.tpe.widen
-        )
-        .asInstanceOf[MethodType]
-      Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
-    }
 
     def extractParamsAndBody(): (List[ValDef], Term) =
       term match

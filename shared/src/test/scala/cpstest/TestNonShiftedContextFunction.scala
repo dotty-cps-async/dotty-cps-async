@@ -11,8 +11,6 @@ class TestNonShiftedContextFunction {
 
   case class Context(x: String)
 
-  /*
-  // disabled in lts
   object O {
 
     def apply[T](c: Context ?=> T): T = c(using Context("O"))
@@ -57,7 +55,5 @@ class TestNonShiftedContextFunction {
     }
     assert(c.run() == Success(6))
   }
-
-   */
 
 }
