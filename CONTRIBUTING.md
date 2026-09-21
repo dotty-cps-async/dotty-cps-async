@@ -6,6 +6,10 @@ Build:
 sbt compile
 ```
 
+The default Scala version is 3.9.0. The cross-build also retains Scala 3.8.4.
+Library artifacts built with the default version require Scala 3.9 or later
+in consuming projects.
+
 Note: the build needs a large JVM heap (the Scala Native toolchain runs inside
 the sbt JVM). `.sbtopts` sets `-Xmx8g`; with sbt's 1G default, `sbt test` ends
 up spending all its time in GC and looks like it hangs.
@@ -42,4 +46,3 @@ Publish new release:
 sbt +publishSigned
 sbt sonaRelease
 ```
-

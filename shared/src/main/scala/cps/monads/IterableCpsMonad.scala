@@ -68,7 +68,8 @@ class IterableCpsMonad[C[x] <: IterableOnce[x]](iterableFactory: IterableFactory
 
 }
 
-inline given iterableCpsMonad[C[x] <: Iterable[x]]: CpsThrowMonad[C] = {
+inline given iterableCpsMonad[C[x] <: Iterable[x]]
+    : (CpsThrowMonad[C] { type Context = CpsThrowMonadInstanceContextBody[C] }) = {
   import cps.macros.misc.CollectionHelper
   val iterableFactory = CollectionHelper.retrieveIterableFactory[C]
   IterableCpsMonad[C](iterableFactory)
