@@ -41,10 +41,16 @@ trait ComputationBound[+T] {
               case Error(e) => Some(Failure(e))
               case _ => None
           case Duration.Inf =>
+            // continue from the progressed state: restarting from `this` on each quant
+            //  reruns already performed side effects (e.g. channel reads).
             var retval: Option[Try[T]] = None
-            val quantDuration = FiniteDuration(ComputationBound.waitQuant, MILLISECONDS)
+            var current: ComputationBound[T] = this
             while(! retval.isDefined) {
-              retval = fulfill(quantDuration)
+              current = current.progressDeadline(System.currentTimeMillis() + ComputationBound.waitQuant)
+              current match
+                case Done(t) => retval = Some(Success(t))
+                case Error(e) => retval = Some(Failure(e))
+                case _ =>
             }
             retval
           case _ =>
@@ -107,9 +113,7 @@ object ComputationBound {
         val ref = new AtomicReference[Option[Try[A]]](None)
         source( r => {
           ref.set(Some(r))
-          externalAsyncNotifier.synchronized{
-             externalAsyncNotifier.notify()
-          }
+          notifyProgress()
         } )
         Wait(ref, fromTry[A] )
    }
@@ -140,10 +144,19 @@ object ComputationBound {
    val deferredQueue: ConcurrentLinkedQueue[Deferred[?]] = new ConcurrentLinkedQueue()
    private[cps] val waitQuant = (100 millis).toMillis
    private[cps] val externalAsyncNotifier = new { }
+   // incremented (under externalAsyncNotifier lock) on each event, which can make some computation runnable.
+   private var progressCounter = 0L
+
+   private[cps] def notifyProgress(): Unit =
+      externalAsyncNotifier.synchronized {
+         progressCounter += 1
+         externalAsyncNotifier.notifyAll()
+      }
 
    private[cps] final val MAX_NESTED_CALLS = 100
 
-   def  advanceDeferredQueue(endMillis: Long, doWait: Boolean): Boolean = {
+   def  advanceDeferredQueue(endMillis: Long, doWait: Boolean, ready: () => Boolean = () => false): Boolean = {
+      val startProgress = externalAsyncNotifier.synchronized{ progressCounter }
       var nFinished = 0
       val secondQueue = new ConcurrentLinkedQueue[Deferred[?]]
       while(!deferredQueue.isEmpty && System.currentTimeMillis < endMillis) 
@@ -166,10 +179,12 @@ object ComputationBound {
                               case Done(x) => 
                                 nFinished = nFinished + 1
                                 c.ref.set(Some(Success(x)))
+                                notifyProgress()
                                 false
                               case Error(e) => 
                                 nFinished = nFinished + 1
                                 c.ref.set(Some(Failure(e)))
+                                notifyProgress()
                                 false
                               case Thunk(f) => 
                                 if (System.currentTimeMillis < endMillis) {
@@ -201,12 +216,14 @@ object ComputationBound {
          if r != null then
             deferredQueue.add(r.nn)
       if (nFinished == 0 && doWait)
-         val timeToWait = math.min(waitQuant, endMillis - System.currentTimeMillis)
-         val timeToWaitMillis = (timeToWait nanos).toMillis
-         if (timeToWaitMillis > 0) 
-           externalAsyncNotifier.synchronized {
+         externalAsyncNotifier.synchronized {
+            // sleep only if nothing was signalled during this pass (otherwise queued computations
+            //  can be runnable now) and caller still have no result. The check is under the same lock
+            //  as notifyProgress, so wakeup can't be lost.
+            val timeToWaitMillis = math.min(waitQuant, endMillis - System.currentTimeMillis)
+            if (progressCounter == startProgress && !ready() && timeToWaitMillis > 0)
               externalAsyncNotifier.wait(timeToWaitMillis)
-           }
+         }
       nFinished > 0
    }
 
@@ -319,9 +336,7 @@ case class Thunk[T](thunk: ()=>ComputationBound[T]) extends ComputationBound[T] 
                 case NonFatal(ex) =>
                   ref.set(Some(Failure(ex)))
               } finally {
-                ComputationBound.externalAsyncNotifier.synchronized{
-                  ComputationBound.externalAsyncNotifier.notify()
-                }
+                ComputationBound.notifyProgress()
               }
           }
           ComputationBound.deferredQueue.add(
@@ -418,7 +433,7 @@ case class Wait[R,T](ref: AtomicReference[Option[Try[R]]], op: Try[R] => Computa
          val beforeWait = System.currentTimeMillis
          val endTime = deadline
          while(ref.get().nn.isEmpty && ( System.currentTimeMillis < endTime ) )
-            ComputationBound.advanceDeferredQueue(endTime, true)
+            ComputationBound.advanceDeferredQueue(endTime, true, () => ref.get().nn.isDefined)
          ref.get().nn.map{ r => 
              val afterWait = Duration(System.currentTimeMillis, MILLISECONDS)
              op(r).progressDeadline(deadline) 

@@ -24,14 +24,14 @@ object Async {
       *   1. This transparent inline checks for preprocessor and builds the call to stage 2
       *   2. If preprocessor exists, preprocessing is applied inline BEFORE stage 2 macro runs
       */
-    transparent inline def apply[T](inline expr: C ?=> T): F[T] =
+    transparent inline def apply[T](inline expr: am.Context ?=> T): F[T] =
       scala.compiletime.summonFrom {
-        case preprocessor: CpsPreprocessor[F, C] =>
+        case preprocessor: CpsPreprocessor[F, am.Context] =>
           // Wrap expr with preprocessing - preprocess is transparent inline so expands here
-          asyncStage2[F, T, C](am, (ctx: C) ?=> preprocessor.preprocess[T](expr(using ctx), ctx))
+          asyncStage2[F, T, am.Context](am, (ctx: am.Context) ?=> preprocessor.preprocess[T](expr(using ctx), ctx))
         case _ =>
           // No preprocessor - pass expr directly to stage 2
-          asyncStage2[F, T, C](am, expr)
+          asyncStage2[F, T, am.Context](am, expr)
       }
 
     transparent inline def in[T](mc: CpsMonadContextProvider[F])(inline expr: mc.Context ?=> T): F[T] =

@@ -1,5 +1,5 @@
-val dottyVersion = "3.3.8"
-//val dottyVersion = "3.7.3"
+val dottyVersion = "3.9.0"
+val supportedScalaVersions = Seq(dottyVersion, "3.8.4")
 
 import scala.scalanative.build._
 
@@ -55,7 +55,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:jvm=github://rssh/dotty-cps-async/master#jvm"
     ),
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
-    crossScalaVersions := Seq(dottyVersion, "3.8.3", "3.8.4"),
+    crossScalaVersions := supportedScalaVersions,
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaPreviousArtifacts := Set("com.github.rssh" %% "dotty-cps-async" % "1.0.3")
   )
@@ -67,7 +67,7 @@ lazy val cps = crossProject(JSPlatform, JVMPlatform, NativePlatform)
       "-source-links:js=github://rssh/dotty-cps-async/master#js"
     ),
     libraryDependencies += "org.scala-js" % "scalajs-junit-test-runtime_2.13" % "1.22.0" % Test,
-    crossScalaVersions := Seq(dottyVersion, "3.8.3", "3.8.4"),
+    crossScalaVersions := supportedScalaVersions,
     publish / skip := (scalaVersion.value != dottyVersion),
     mimaFailOnNoPrevious := false
   )
@@ -143,7 +143,7 @@ lazy val compilerPlugin = project
       ("org.scala-js" %% "scalajs-env-nodejs" % "1.6.0").cross(CrossVersion.for3Use2_13) % "test"
     ),
     crossVersion := CrossVersion.full,
-    crossScalaVersions := Seq("3.3.8", "3.8.3", "3.8.4"),
+    crossScalaVersions := supportedScalaVersions,
     // TODO: split test into subdirectories.
     // Test/scalacOptions ++= {
     //   val jar = (Compile / packageBin).value
@@ -190,9 +190,10 @@ lazy val compilerPluginTests = crossProject(JSPlatform, JVMPlatform, NativePlatf
       val jar = conv.toPath((compilerPlugin / Compile / packageBin).value).toFile
       Seq(s"-Xplugin:${jar.getAbsolutePath}", s"-Jdummy=${jar.lastModified}", "-color:never", "-explain")
     },
-    crossScalaVersions := Seq("3.3.8", "3.8.3", "3.8.4")
+    crossScalaVersions := supportedScalaVersions
   )
   .jvmSettings(
+    Test / parallelExecution := false,
     libraryDependencies += "com.github.sbt" % "junit-interface" % "0.13.3" % "test",
     Test / unmanagedSourceDirectories ++= Seq(
       baseDirectory.value / ".." / ".." / "jvm" / "src" / "test" / "scala"

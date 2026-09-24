@@ -112,7 +112,7 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     if (path.isDirectory) {
       val dir = path.toDirectory
       dir.list.toList.flatMap(scalaFilesIn)
-    } else if (path.isFile && path.hasExtension("scala")) {
+    } else if (path.isFile && path.name.endsWith(".scala")) {
       List(path.toString)
     } else {
       Nil
