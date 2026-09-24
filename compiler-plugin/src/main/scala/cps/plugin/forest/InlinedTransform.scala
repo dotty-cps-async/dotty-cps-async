@@ -113,11 +113,11 @@ object InlinedTransform {
         case _ =>
           tail.asyncKind match
             case AsyncKind.Sync =>
-              MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(None, tail))
+              MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(Some(origin), tail))
             case AsyncKind.Async(v) =>
               FlatMapCpsTree(origin.rhs, owner, adoptedRhs, FlatMapCpsTreeArgument(Some(origin), tail))
             case AsyncKind.AsyncLambda(bodyKind) =>
-              MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(None, tail))
+              MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(Some(origin), tail))
       Some(retval)
     }
 
@@ -391,9 +391,14 @@ object InlinedTransform {
 
     val cpsedExpansion = RootTransform(changedExpansion, owner, nesting + 1)
 
+    val bindingsChanged = records.exists {
+      case _: UnchangedBindingRecord => false
+      case _                         => true
+    }
+
     val newInlined = cpsedExpansion.asyncKind match
       case AsyncKind.Sync =>
-        if (cpsedExpansion.isOriginEqSync) then CpsTree.unchangedPure(inlinedTerm, owner)
+        if (cpsedExpansion.isOriginEqSync && !bindingsChanged) then CpsTree.unchangedPure(inlinedTerm, owner)
         else CpsTree.pure(inlinedTerm, owner, Inlined(inlinedTerm.call, newBindings, cpsedExpansion.unpure.get))
       case AsyncKind.Async(v) =>
         CpsTree.impure(inlinedTerm, owner, Inlined(inlinedTerm.call, newBindings, cpsedExpansion.transformed), v)
