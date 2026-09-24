@@ -156,6 +156,9 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       if (!funValDefs.changes.isEmpty) {
         val transformer = new TreeMap() {
 
+          override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
+            TransformUtil.transformCaseDef(this, tree, owner)
+
           override def transformTerm(term: Term)(owner: Symbol): Term =
             try transformTermInternal(term)(owner)
             catch

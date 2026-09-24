@@ -4,6 +4,7 @@ import scala.quoted._
 
 import cps._
 import cps.macros._
+import cps.macros.common._
 import cps.macros.misc._
 
 /** Transforms calls to `scala.util.control.Breaks.break()` and `Breaks.breakable { body }`
@@ -36,14 +37,8 @@ trait BreaksTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     }
     val paramsDescriptor = MethodParamsDescriptor(fun)
     val substituteNonFatal = new TreeMap {
-      override def transformTree(tree: Tree)(owner: Symbol): Tree = {
-        tree match
-          case u @ Unapply(fun, implicits, patterns) if fun.symbol == nonFatalUnapplySym =>
-            val nFun = Select.unique(nonFatalAndNotControlThrowableAsyncWrapperCompanion, "unapply")
-            Unapply.copy(u)(nFun, implicits, patterns)
-          case _ =>
-            super.transformTree(tree)(owner)
-      }
+      override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
+        TransformUtil.transformCaseDef(this, tree, owner, substituteNonFatalUnapply)
     }
     val nArgs = substituteNonFatal.transformTerms(args)(owner)
     val argRecords = O.buildApplyArgsRecords(paramsDescriptor, nArgs)(owner)

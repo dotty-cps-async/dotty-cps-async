@@ -144,7 +144,7 @@ class TestCBSReturning:
             try   
               await(T1.cbi(2))
               throwReturn(2)
-            catch 
+            catch
               case NonFatal(ex) =>
                 8
          }
@@ -155,6 +155,20 @@ class TestCBSReturning:
      r match
        case Success(v) => assert(v == 2)
        case Failure(ex) => throw ex
+  }
+
+  @Test def testReturningFromTryWithBoundNonFatal(): Unit = {
+     val c = async[ComputationBound] {
+         returning {
+            try
+              await(T1.cbi(2))
+              throwReturn(2)
+            catch
+              case ex @ NonFatal(_) =>
+                8
+         }
+     }
+     assert(c.run() == Success(2))
   }
 
   transparent inline def earlyReturn[T](t:T)(using ReturnThrowable[T]):Nothing =

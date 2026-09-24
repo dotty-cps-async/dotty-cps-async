@@ -29,6 +29,9 @@ object LoomTransform:
 
     val treeMap = new TreeMap() {
 
+      override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
+        TransformUtil.transformCaseDef(this, tree, owner)
+
       override def transformTerm(term: Term)(owner: Symbol): Term = {
         if flags.debugLevel >= 20 then
           log(s"loom:transformTerm start, term=${term.show}")
