@@ -49,8 +49,28 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       else
         val nTree = Match.copy(matchTerm)(scrutinee, nCases)
         CpsTree.impure(owner, nTree, otpe)
-    else if (!asyncCases) then cpsScrutinee.monadMap(x => Match.copy(matchTerm)(x, nCases), otpe)
-    else cpsScrutinee.monadFlatMap(x => Match.copy(matchTerm)(x, nCases), otpe)
+    else
+      val uncheckedAnnotations = exhaustivityUncheckedAnnotations(scrutinee.tpe)
+      def selector(x: Term): Term =
+        if (uncheckedAnnotations.isEmpty) then x
+        else
+          // restore annotations, lost in the type of lambda parameter, as typer does for irrefutable patterns.
+          val tpe = uncheckedAnnotations.foldRight(x.tpe.widen)((annot, tp) => AnnotatedType(tp, annot))
+          Typed(x, Inferred(tpe))
+      if (!asyncCases) then cpsScrutinee.monadMap(x => Match.copy(matchTerm)(selector(x), nCases), otpe)
+      else cpsScrutinee.monadFlatMap(x => Match.copy(matchTerm)(selector(x), nCases), otpe)
+
+  /** Annotations of the scrutinee type which disable exhaustivity checking (`@unchecked` and `@RuntimeChecked`, which is
+    * added by `.runtimeChecked`).
+    */
+  private def exhaustivityUncheckedAnnotations(tpe: TypeRepr): List[Term] =
+    tpe match
+      case AnnotatedType(underlying, annot) =>
+        val rest = exhaustivityUncheckedAnnotations(underlying)
+        annot.tpe.typeSymbol.fullName match
+          case "scala.unchecked" | "scala.annotation.internal.RuntimeChecked" => annot :: rest
+          case _                                                            => rest
+      case _ => Nil
 
 object MatchTreeTransform:
 

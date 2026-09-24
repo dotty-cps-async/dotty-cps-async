@@ -39,27 +39,28 @@ object MatchTransform {
             val nSym =
               Symbols.newSymbol(owner, "xMathSelect".toTermName, Flags.EmptyFlags, selectorCps.originType.widen, Symbols.NoSymbol)
             val nValDef = ValDef(nSym).withSpan(selector.span)
+            val nSelector = restoreUncheckedAnnotations(selector, ref(nSym))
             casesAsyncKind match
               case AsyncKind.Sync =>
                 MapCpsTree(
                   term,
                   owner,
                   selectorCps,
-                  MapCpsTreeArgument(Some(nValDef), CpsTree.pure(term, owner, Match(ref(nSym), casesPrepared)))
+                  MapCpsTreeArgument(Some(nValDef), CpsTree.pure(term, owner, Match(nSelector, casesPrepared)))
                 )
               case AsyncKind.Async(internalKind2) =>
                 FlatMapCpsTree(
                   term,
                   owner,
                   selectorCps,
-                  FlatMapCpsTreeArgument(Some(nValDef), CpsTree.impure(term, owner, Match(ref(nSym), casesPrepared), internalKind2))
+                  FlatMapCpsTreeArgument(Some(nValDef), CpsTree.impure(term, owner, Match(nSelector, casesPrepared), internalKind2))
                 )
               case AsyncKind.AsyncLambda(bodyKind) =>
                 MapCpsTree(
                   term,
                   owner,
                   selectorCps,
-                  MapCpsTreeArgument(Some(nValDef), CpsTree.impure(term, owner, Match(ref(nSym), casesPrepared), casesAsyncKind))
+                  MapCpsTreeArgument(Some(nValDef), CpsTree.impure(term, owner, Match(nSelector, casesPrepared), casesAsyncKind))
                 )
           case AsyncKind.AsyncLambda(internalKind) =>
             throw CpsTransformException("AsyncLambda as selector of match statement is not supported", term.srcPos)
@@ -68,5 +69,23 @@ object MatchTransform {
       case null =>
         throw CpsTransformException("Match term expected", term.srcPos)
   }
+
+  /** Restore annotations of the origin selector type, which disable exhaustivity checking (`@unchecked` and
+    * `@RuntimeChecked`, added by `.runtimeChecked`), on the new selector, as typer does for irrefutable patterns.
+    */
+  private def restoreUncheckedAnnotations(origin: Tree, nSelector: Tree)(using Context): Tree = {
+    val annots = uncheckedAnnotations(origin.tpe)
+    if (annots.isEmpty) then nSelector
+    else
+      val tpe = annots.foldRight(nSelector.tpe.widen)((annot, tp) => AnnotatedType(tp, annot))
+      Typed(nSelector, TypeTree(tpe, inferred = true)).withSpan(origin.span)
+  }
+
+  private def uncheckedAnnotations(tpe: Type)(using Context): List[Annotations.Annotation] =
+    tpe.stripTypeVar match
+      case AnnotatedType(underlying, annot) =>
+        val rest = uncheckedAnnotations(underlying)
+        if (annot.matches(defn.UncheckedAnnot) || annot.matches(defn.RuntimeCheckedAnnot)) then annot :: rest else rest
+      case _ => Nil
 
 }
