@@ -33,65 +33,6 @@ object TransformUtil:
     val assoc: Map[Symbol, Tree] = paramsMap.map((k, i) => (k, Ref(indexedArgs(i).symbol)))
     changeSymsInTerm(assoc, body, owner)
 
-  /** Transform the case definition, with pattern parsed by [[transformPattern]]. Should be called from `transformCaseDef` of
-    * our TreeMaps.
-    */
-  def transformCaseDef(using Quotes)(
-      treeMap: quotes.reflect.TreeMap,
-      caseDef: quotes.reflect.CaseDef,
-      owner: quotes.reflect.Symbol,
-      mapUnapply: quotes.reflect.Unapply => quotes.reflect.Unapply = (u: quotes.reflect.Unapply) => u
-  ): quotes.reflect.CaseDef =
-    import quotes.reflect.*
-    CaseDef.copy(caseDef)(
-      transformPattern(treeMap, caseDef.pattern, owner, mapUnapply),
-      caseDef.guard.map(treeMap.transformTerm(_)(owner)),
-      treeMap.transformTerm(caseDef.rhs)(owner)
-    )
-
-  /** Transform the pattern top-down, passing to the `treeMap` only terms (extractors, implicits, literals and stable
-    * identifiers) and type trees.
-    *
-    * The default TreeMap dispatches subpatterns via `transformTree`, where the named pattern `case C(name = p)`, typed as
-    * `NamedArg(name, p)` inside `Unapply`, is handled as a term, and `transformTerm` fails on `p` with MatchError (see
-    * tests-cli/t2026_09_24_named_pattern_treemap). Also the default TreeMap does not go inside the pattern of `Bind`.
-    *
-    * @param mapUnapply
-    *   applied to each `Unapply` after transformation of its subpatterns.
-    */
-  def transformPattern(using Quotes)(
-      treeMap: quotes.reflect.TreeMap,
-      pattern: quotes.reflect.Tree,
-      owner: quotes.reflect.Symbol,
-      mapUnapply: quotes.reflect.Unapply => quotes.reflect.Unapply = (u: quotes.reflect.Unapply) => u
-  ): quotes.reflect.Tree =
-    import quotes.reflect.*
-    def transform(p: Tree): Tree = transformPattern(treeMap, p, owner, mapUnapply)
-    pattern match
-      case b: Bind =>
-        Bind.copy(b)(b.name, transform(b.pattern))
-      case u: Unapply =>
-        mapUnapply(
-          Unapply.copy(u)(
-            treeMap.transformTerm(u.fun)(owner),
-            treeMap.transformSubTrees(u.implicits)(owner),
-            u.patterns.map(transform)
-          )
-        )
-      case a: Alternatives =>
-        Alternatives.copy(a)(a.patterns.map(transform))
-      case na: NamedArg =>
-        // value of NamedArg is a pattern, not a term.
-        NamedArg.copy(na)(na.name, transform(na.value).asInstanceOf[Term])
-      case TypedOrTest(inner, tpt) =>
-        TypedOrTest.copy(pattern)(transform(inner), treeMap.transformTypeTree(tpt)(owner))
-      case w: Wildcard =>
-        w
-      case t: Term =>
-        treeMap.transformTerm(t)(owner)
-      case other =>
-        treeMap.transformTree(other)(owner)
-
   def changeSymsInTerm(using
       Quotes
   )(
@@ -112,7 +53,8 @@ object TransformUtil:
     import quotes.reflect._
 
     // TODO: mege wirh changeSyms
-    val argTransformer = new TreeMap() {
+    val pm = PatternMaps[qctx.type](qctx)
+    val argTransformer = new pm.PatternTreeMap {
 
       def lookupParamTerm(sym: Symbol): Option[Term] =
         association.get(sym) match
@@ -122,9 +64,6 @@ object TransformUtil:
               case _ =>
                 throw MacroError(s"term expected for lambda param, we have ${paramTree}", body.asExpr)
           case _ => None
-
-      override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
-        TransformUtil.transformCaseDef(this, tree, owner)
 
       override def transformTerm(tree: Term)(owner: Symbol): Term =
         tree match

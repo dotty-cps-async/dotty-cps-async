@@ -27,10 +27,8 @@ object LoomTransform:
 
     val needVarTransformationForAutomaticColoring: Boolean = false
 
-    val treeMap = new TreeMap() {
-
-      override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
-        TransformUtil.transformCaseDef(this, tree, owner)
+    val pm = PatternMaps[quotes.type](quotes)
+    val treeMap = new pm.PatternTreeMap {
 
       override def transformTerm(term: Term)(owner: Symbol): Term = {
         if flags.debugLevel >= 20 then

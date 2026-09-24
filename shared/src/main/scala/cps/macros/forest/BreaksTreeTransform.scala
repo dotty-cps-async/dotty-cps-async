@@ -36,9 +36,10 @@ trait BreaksTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsCtx.log("runBreaksBreakable")
     }
     val paramsDescriptor = MethodParamsDescriptor(fun)
-    val substituteNonFatal = new TreeMap {
-      override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
-        TransformUtil.transformCaseDef(this, tree, owner, substituteNonFatalUnapply)
+    val pm = PatternMaps[qctx.type](qctx)
+    val substituteNonFatal = new pm.PatternTreeMap {
+      override def transformUnapply(u: Unapply)(owner: Symbol): Unapply =
+        substituteNonFatalUnapply(super.transformUnapply(u)(owner))
     }
     val nArgs = substituteNonFatal.transformTerms(args)(owner)
     val argRecords = O.buildApplyArgsRecords(paramsDescriptor, nArgs)(owner)
