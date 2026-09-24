@@ -3,9 +3,9 @@
 - id: WI-20260924-XMPQP-uncomment-testshiftsip47
 - created: 2026-09-24T09:03:19Z
 
-- status: Open
-- status_agent: user
-- status_at: 2026-09-24T09:03:19Z
+- status: Delivered
+- status_agent: claude
+- status_at: 2026-09-24T09:13:12Z
 
 - acceptance: sbt-test
 
