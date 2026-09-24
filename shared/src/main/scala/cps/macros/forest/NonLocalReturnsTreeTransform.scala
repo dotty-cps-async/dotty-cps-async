@@ -4,7 +4,6 @@ import scala.quoted._
 
 import cps._
 import cps.macros._
-import cps.macros.common._
 import cps.macros.misc._
 
 /** transform call of NonLocalReturns.throwReturn to call of NonLocalReturnsAsyncShift.throwReturn coll of NonLocalReturns.returning
@@ -59,8 +58,7 @@ trait NonLocalReturnsTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsCtx.log("runNonLocalReturnsReturning")
     }
     val paramsDescriptor = MethodParamsDescriptor(fun)
-    val pm = PatternMaps[qctx.type](qctx)
-    val substituteNonFatal = new pm.PatternTreeMap {
+    val substituteNonFatal = new PatternAwareTreeMap {
       override def transformUnapply(u: Unapply)(owner: Symbol): Unapply =
         substituteNonFatalUnapply(super.transformUnapply(u)(owner))
     }

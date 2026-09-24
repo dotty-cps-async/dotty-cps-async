@@ -4,7 +4,6 @@ import scala.quoted._
 
 import cps._
 import cps.macros._
-import cps.macros.common._
 import cps.macros.misc._
 
 /** Transforms calls to `scala.util.control.Breaks.break()` and `Breaks.breakable { body }`
@@ -36,8 +35,7 @@ trait BreaksTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsCtx.log("runBreaksBreakable")
     }
     val paramsDescriptor = MethodParamsDescriptor(fun)
-    val pm = PatternMaps[qctx.type](qctx)
-    val substituteNonFatal = new pm.PatternTreeMap {
+    val substituteNonFatal = new PatternAwareTreeMap {
       override def transformUnapply(u: Unapply)(owner: Symbol): Unapply =
         substituteNonFatalUnapply(super.transformUnapply(u)(owner))
     }

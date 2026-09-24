@@ -2,32 +2,25 @@ package cps.macros.common
 
 import scala.quoted.*
 
-/** Holder of [[PatternTreeMap]] for the given `Quotes`.
-  *
-  * Usage:
-  * {{{
-  *   val pm = PatternMaps[quotes.type](quotes)
-  *   val treeMap = new pm.PatternTreeMap {
-  *     override def transformTerm(tree: Term)(owner: Symbol): Term = ...
-  *   }
-  * }}}
-  *
-  * `PatternTreeMap` is nested, because a top-level `class PatternTreeMap[Q <: Quotes & Singleton](using val q: Q) extends
-  * q.reflect.TreeMap` is unusable: inherited methods are typed with `PatternTreeMap.this.q.reflect.Term`, which does not unify
-  * with `quotes.reflect.Term` at the call site. Here they are typed with `pm.q.reflect.Term`, where `pm.q: quotes.type`.
-  */
-class PatternMaps[Q <: Quotes & Singleton](val q: Q):
-  import q.reflect.*
+trait PatternAwareTreeMapScope:
+
+  thisScope: MacroReflectScope =>
+
+  import qctx.reflect.*
 
   /** TreeMap which parses the pattern of a `CaseDef` top-down, passing to `transformTerm` and `transformTypeTree` only terms
-    * (extractors, implicits, literal and stable-identifier patterns) and type trees. Macro TreeMaps which traverse user code
-    * should extend it.
+    * (extractors, implicits, literal and stable-identifier patterns) and type trees. Macro TreeMaps which traverse user code should
+    * extend it.
     *
     * The default TreeMap dispatches subpatterns via `transformTree`, where the named pattern `case C(name = p)`, typed as
     * `NamedArg(name, p)` inside `Unapply`, is handled as a term, and `transformTerm` fails on `p` with MatchError (see
     * tests-cli/t2026_09_24_named_pattern_treemap). Also the default TreeMap does not go inside the pattern of `Bind`.
+    *
+    * It is defined inside a scope, because a top-level `class PatternAwareTreeMap[Q <: Quotes & Singleton](using val q: Q) extends
+    * q.reflect.TreeMap` is unusable: inherited methods are typed with `PatternAwareTreeMap.this.q.reflect.Term`, which does not
+    * unify with `quotes.reflect.Term` at the call site.
     */
-  abstract class PatternTreeMap extends TreeMap:
+  abstract class PatternAwareTreeMap extends TreeMap:
 
     override def transformCaseDef(tree: CaseDef)(owner: Symbol): CaseDef =
       CaseDef.copy(tree)(

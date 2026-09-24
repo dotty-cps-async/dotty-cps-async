@@ -27,8 +27,8 @@ object LoomTransform:
 
     val needVarTransformationForAutomaticColoring: Boolean = false
 
-    val pm = PatternMaps[quotes.type](quotes)
-    val treeMap = new pm.PatternTreeMap {
+    val scope = MacroReflectScopeInstance[quotes.type]
+    val treeMap = new scope.PatternAwareTreeMap {
 
       override def transformTerm(term: Term)(owner: Symbol): Term = {
         if flags.debugLevel >= 20 then

@@ -53,8 +53,8 @@ object TransformUtil:
     import quotes.reflect._
 
     // TODO: mege wirh changeSyms
-    val pm = PatternMaps[qctx.type](qctx)
-    val argTransformer = new pm.PatternTreeMap {
+    val scope = MacroReflectScopeInstance[qctx.type]
+    val argTransformer = new scope.PatternAwareTreeMap {
 
       def lookupParamTerm(sym: Symbol): Option[Term] =
         association.get(sym) match

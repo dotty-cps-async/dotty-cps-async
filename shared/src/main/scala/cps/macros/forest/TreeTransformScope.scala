@@ -2,11 +2,13 @@ package cps.macros.forest
 
 import cps._
 import cps.macros._
+import cps.macros.common._
 import cps.macros.forest.application._
 import scala.quoted._
 
 trait TreeTransformScope[F[_]: Type, CT: Type, CC <: CpsMonadContext[F]: Type]
-    extends CpsTreeScope[F, CT, CC]
+    extends MacroReflectScope
+    with CpsTreeScope[F, CT, CC]
     with KnownTreeFragments[F, CT, CC]
     with TypeApplyTreeTransform[F, CT, CC]
     with RootTreeTransform[F, CT, CC]
@@ -25,8 +27,6 @@ trait TreeTransformScope[F[_]: Type, CT: Type, CC <: CpsMonadContext[F]: Type]
     with BreaksTreeTransform[F, CT, CC] {
 
   val cpsCtx: TransformationContext[F, CT, CC]
-
-  implicit val qctx: Quotes
 
   implicit val fType: quoted.Type[F]
 
