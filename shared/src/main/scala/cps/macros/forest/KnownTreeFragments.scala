@@ -75,6 +75,14 @@ trait KnownTreeFragments[F[_], CT, CC <: CpsMonadContext[F]]:
   lazy val nonFatalAndNotControlThrowableAsyncWrapperCompanion =
     Ref.term(nonFatalAndNotControlThrowableAsyncWrapperClassSym.companionModule.termRef)
 
+  /** `case NonFatal(e)` => `case NonFatalAndNotControlThrowableAsyncWrapper(e)`, so user catches do not swallow wrapped
+    * control throwables.
+    */
+  def substituteNonFatalUnapply(u: Unapply): Unapply =
+    if (u.fun.symbol == nonFatalUnapplySym) then
+      Unapply.copy(u)(Select.unique(nonFatalAndNotControlThrowableAsyncWrapperCompanion, "unapply"), u.implicits, u.patterns)
+    else u
+
   lazy val logicalAndSym = defn.BooleanClass.declaredMethod("&&").head
   lazy val logicalOrSym = defn.BooleanClass.declaredMethod("||").head
   lazy val logicalNotSym = defn.BooleanClass.declaredMethod("unary_!").head

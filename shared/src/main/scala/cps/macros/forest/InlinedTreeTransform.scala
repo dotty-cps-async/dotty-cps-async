@@ -154,7 +154,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     var usedAwaitVals = Set.empty[Symbol]
     val bodyWithoutAwaits =
       if (!funValDefs.changes.isEmpty) {
-        val transformer = new TreeMap() {
+        val transformer = new PatternAwareTreeMap {
 
           override def transformTerm(term: Term)(owner: Symbol): Term =
             try transformTermInternal(term)(owner)

@@ -53,7 +53,8 @@ object TransformUtil:
     import quotes.reflect._
 
     // TODO: mege wirh changeSyms
-    val argTransformer = new TreeMap() {
+    val scope = MacroReflectScopeInstance[qctx.type]
+    val argTransformer = new scope.PatternAwareTreeMap {
 
       def lookupParamTerm(sym: Symbol): Option[Term] =
         association.get(sym) match
@@ -63,13 +64,6 @@ object TransformUtil:
               case _ =>
                 throw MacroError(s"term expected for lambda param, we have ${paramTree}", body.asExpr)
           case _ => None
-
-      override def transformTree(tree: Tree)(owner: Symbol): Tree =
-        tree match
-          case pattern: Bind =>
-            Bind.copy(pattern)(pattern.name, transformTree(pattern.pattern)(owner))
-          case _ =>
-            super.transformTree(tree)(owner)
 
       override def transformTerm(tree: Term)(owner: Symbol): Term =
         tree match

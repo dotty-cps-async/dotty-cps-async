@@ -109,3 +109,21 @@ class TestBS1ShiftBreaks:
      assert(c.run() == Success(()))
      assertEquals(false, caught)
      assertEquals(0, afterBreak)
+
+  @Test def testUserBoundNonFatalCatchInsideBodyDoesNotSwallowBreak(): Unit =
+     var caught = false
+     var afterBreak = 0
+     val c = async[ComputationBound]{
+        Breaks.breakable {
+           val v = await(T1.cbi(1))
+           try {
+              Breaks.break()
+           } catch {
+              case e @ NonFatal(_) => caught = true
+           }
+           afterBreak = await(T1.cbi(99))
+        }
+     }
+     assert(c.run() == Success(()))
+     assertEquals(false, caught)
+     assertEquals(0, afterBreak)
