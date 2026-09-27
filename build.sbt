@@ -3,7 +3,7 @@ val supportedScalaVersions = Seq(dottyVersion, "3.8.4")
 
 import scala.scalanative.build._
 
-ThisBuild / version := "1.3.4"
+ThisBuild / version := "1.4.0"
 ThisBuild / versionScheme := Some("semver-spec")
 ThisBuild / publishTo := localStaging.value
 
