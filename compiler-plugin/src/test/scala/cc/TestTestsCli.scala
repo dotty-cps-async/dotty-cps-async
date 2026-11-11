@@ -29,4 +29,13 @@ class TestTestsCli {
   @Test def unusedContextParamPlugin(): Unit =
     TestsCli.check(unusedContextParam, usePlugin = true, expectedOutput = Some("List(2, 2, 4, 4)\n"))
 
+  // https://github.com/dotty-cps-async/dotty-cps-async/issues/148
+  val unusedPatvars = "t2026_11_11_unused_patvars"
+
+  @Test def unusedPatvarsMacro(): Unit =
+    TestsCli.check(unusedPatvars, usePlugin = false, expectedOutput = Some("List(3, 3, 4, 2, -1)\n"))
+
+  @Test def unusedPatvarsPlugin(): Unit =
+    TestsCli.check(unusedPatvars, usePlugin = true, expectedOutput = Some("List(3, 3, 4, 2, -1)\n"))
+
 }
