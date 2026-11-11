@@ -86,11 +86,12 @@ object CpsAsyncStreamMacro:
         insideLambda(
           fBody,
           { (param, body) =>
-            val mt1 = MethodType(List(context.name))(_ => List(context.tpt.tpe), _ => TypeRepr.of[CpsAsyncEmitter[F, T] => F[Unit]])
-            val lambda1 = Lambda(
+            val lambda1 = cps.macros.common.TransformUtil.contextLambdaAsFunction(
               Symbol.spliceOwner,
-              mt1,
-              (owner, contextArgs) =>
+              context.name,
+              context.tpt.tpe,
+              TypeRepr.of[CpsAsyncEmitter[F, T] => F[Unit]]
+            ) { (owner, contextArgs) =>
                 val mt2 = MethodType(List(param.name))(_ => List(param.tpt.tpe), _ => TypeRepr.of[F[Unit]])
                 val contextTerm = contextArgs.head.asInstanceOf[Term]
                 val lambda2 = Lambda(
@@ -108,7 +109,7 @@ object CpsAsyncStreamMacro:
                   }
                 )
                 Block(Nil, lambda2).changeOwner(owner)
-            )
+            }
             val nLambda = Block(Nil, lambda1).changeOwner(Symbol.spliceOwner)
             '{
               ${ absorber }.eval(${ nLambda.asExprOf[C => CpsAsyncEmitter[F, T] => F[Unit]] })

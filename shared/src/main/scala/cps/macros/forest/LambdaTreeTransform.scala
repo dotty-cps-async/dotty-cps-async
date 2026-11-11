@@ -33,7 +33,9 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       val paramNames = params.map(_.name)
       val paramTypes = params.map(_.tpt.tpe)
       val changedBody = cpsBody.syncOrigin.get
-      val mt = MethodType(paramNames)(_ => paramTypes, _ => changedBody.tpe.widen)
+      // keep context function as context function (async block is a context lambda, see TransformUtil.contextLambdaAsFunction)
+      val methodKind = if (lambdaTerm.tpe.isContextFunctionType) MethodTypeKind.Contextual else MethodTypeKind.Plain
+      val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => changedBody.tpe.widen)
       val newLambda = Lambda(
         owner,
         mt,

@@ -18,8 +18,9 @@ object WithOptExprProxy:
     originExpr.asTerm match
       case Ident(_)   => buildExpr(originExpr)
       case originTerm =>
-        //  Flags.Synthetics cause error in compiler:  TODO: report
-        val proxy = Symbol.newVal(Symbol.spliceOwner, name, originExpr.asTerm.tpe.widen, Flags.EmptyFlags, Symbol.noSymbol)
+        // Synthetic: proxy can be unused (when the transformed body does not call the monad), which should not
+        // be reported by -Wunused:locals (https://github.com/dotty-cps-async/dotty-cps-async/issues/143)
+        val proxy = Symbol.newVal(Symbol.spliceOwner, name, originExpr.asTerm.tpe.widen, Flags.Synthetic, Symbol.noSymbol)
         val proxyValDef = ValDef(proxy, Some(originTerm))
         val proxyIdent = Ref(proxy).asExprOf[T]
         val buildTerm = buildExpr(proxyIdent).asTerm.changeOwner(Symbol.spliceOwner)
