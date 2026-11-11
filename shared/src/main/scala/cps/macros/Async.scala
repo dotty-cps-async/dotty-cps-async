@@ -394,14 +394,10 @@ object Async {
 
       val preprocessedExpr = preprocessedBody.changeOwner(Symbol.spliceOwner).asExprOf[T]
       val transformed = transformImpl[F, T, C](preprocessedExpr, Ref(oldValDef.symbol).asExprOf[C])
-      val mt = MethodType(List(oldValDef.name))(_ => List(oldValDef.tpt.tpe), _ => TypeRepr.of[F[T]])
-      val nLambda = Lambda(
-        Symbol.spliceOwner,
-        mt,
-        (owner, params) => {
+      val nLambda = TransformUtil.contextLambdaAsFunction(Symbol.spliceOwner, oldValDef.name, oldValDef.tpt.tpe, TypeRepr.of[F[T]]) {
+        (owner, params) =>
           TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
-        }
-      )
+      }
       nestFun(nLambda)
 
     val retval = inInlined(cexpr.asTerm, transformNotInlined).asExprOf[C => F[T]]
@@ -429,14 +425,10 @@ object Async {
       // NO preprocessing - it was already done in stage 1
       val bodyExpr = body.changeOwner(Symbol.spliceOwner).asExprOf[T]
       val transformed = transformImpl[F, T, C](bodyExpr, Ref(oldValDef.symbol).asExprOf[C])
-      val mt = MethodType(List(oldValDef.name))(_ => List(oldValDef.tpt.tpe), _ => TypeRepr.of[F[T]])
-      val nLambda = Lambda(
-        Symbol.spliceOwner,
-        mt,
-        (owner, params) => {
+      val nLambda = TransformUtil.contextLambdaAsFunction(Symbol.spliceOwner, oldValDef.name, oldValDef.tpt.tpe, TypeRepr.of[F[T]]) {
+        (owner, params) =>
           TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
-        }
-      )
+      }
       nestFun(nLambda)
 
     val retval = inInlined(cexpr.asTerm, transformNotInlined).asExprOf[C => F[T]]

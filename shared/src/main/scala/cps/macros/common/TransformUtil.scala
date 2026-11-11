@@ -33,6 +33,27 @@ object TransformUtil:
     val assoc: Map[Symbol, Tree] = paramsMap.map((k, i) => (k, Ref(indexedArgs(i).symbol)))
     changeSymsInTerm(assoc, body, owner)
 
+  /** Build a lambda with one parameter as context function `(p: A) ?=> R` and cast it to `A => R` (both are erased to
+    * `Function1`).
+    *
+    * Used when we rebuild the context function `C ?=> T` of async block as `C => F[T]`: the new parameter receives a simple
+    * name instead of the compiler-generated `contextual$N`, so as an explicit parameter it would be reported by
+    * `-Wunused:explicits` when the transformed body does not use the monad context
+    * (https://github.com/dotty-cps-async/dotty-cps-async/issues/143). The given parameter of a synthetic lambda is not reported.
+    */
+  def contextLambdaAsFunction(using
+      Quotes
+  )(
+      owner: quotes.reflect.Symbol,
+      paramName: String,
+      paramType: quotes.reflect.TypeRepr,
+      resultType: quotes.reflect.TypeRepr
+  )(rhsFn: (quotes.reflect.Symbol, List[quotes.reflect.Tree]) => quotes.reflect.Tree): quotes.reflect.Term =
+    import quotes.reflect._
+    val mt = MethodType(MethodTypeKind.Contextual)(List(paramName))(_ => List(paramType), _ => resultType)
+    val lambda = Lambda(owner, mt, rhsFn)
+    TypeApply(Select.unique(lambda, "asInstanceOf"), List(Inferred(createFunctionType(List(paramType), resultType))))
+
   def changeSymsInTerm(using
       Quotes
   )(
