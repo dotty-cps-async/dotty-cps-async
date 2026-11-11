@@ -107,7 +107,8 @@ object CpsAsyncStreamMacro:
                     asyncBody.changeOwner(owner)
                   }
                 )
-                Block(Nil, lambda2).changeOwner(owner)
+                cps.macros.common.TransformUtil
+                  .markLambdaParamAsUsed(contextArgs.head, Block(Nil, lambda2).changeOwner(owner), owner)
             )
             val nLambda = Block(Nil, lambda1).changeOwner(Symbol.spliceOwner)
             '{

@@ -399,7 +399,8 @@ object Async {
         Symbol.spliceOwner,
         mt,
         (owner, params) => {
-          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          val nBody = TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          TransformUtil.markLambdaParamAsUsed(params.head, nBody, owner)
         }
       )
       nestFun(nLambda)
@@ -434,7 +435,8 @@ object Async {
         Symbol.spliceOwner,
         mt,
         (owner, params) => {
-          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          val nBody = TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          TransformUtil.markLambdaParamAsUsed(params.head, nBody, owner)
         }
       )
       nestFun(nLambda)

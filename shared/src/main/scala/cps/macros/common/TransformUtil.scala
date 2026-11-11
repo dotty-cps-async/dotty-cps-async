@@ -33,6 +33,31 @@ object TransformUtil:
     val assoc: Map[Symbol, Tree] = paramsMap.map((k, i) => (k, Ref(indexedArgs(i).symbol)))
     changeSymsInTerm(assoc, body, owner)
 
+  /** Mark the parameter of a lambda, rebuilt by macro from context function, as used.
+    *
+    * When we rebuild `C ?=> T` as `C => F[T]`, the new parameter receives a simple name instead of the compiler-generated
+    * `contextual$N`, so `-Wunused:explicits` warns about it when the transformed body does not use the monad context
+    * (https://github.com/dotty-cps-async/dotty-cps-async/issues/143). In this case we prepend a synthetic `val` which refers to
+    * the parameter.
+    */
+  def markLambdaParamAsUsed(using
+      Quotes
+  )(param: quotes.reflect.Tree, body: quotes.reflect.Term, owner: quotes.reflect.Symbol): quotes.reflect.Term =
+    import quotes.reflect._
+    val paramSym = param.symbol
+    val isUsed = new TreeAccumulator[Boolean] {
+      def foldTree(x: Boolean, tree: Tree)(owner: Symbol): Boolean =
+        x || (tree match
+          case id: Ident if id.symbol == paramSym => true
+          case _                                   => foldOverTree(x, tree)(owner)
+        )
+    }.foldTree(false, body)(owner)
+    if isUsed then body
+    else
+      val paramRef = Ref(paramSym)
+      val usageSym = Symbol.newVal(owner, Symbol.freshName("unusedCtx"), paramRef.tpe.widen, Flags.Synthetic, Symbol.noSymbol)
+      Block(List(ValDef(usageSym, Some(paramRef))), body)
+
   def changeSymsInTerm(using
       Quotes
   )(
