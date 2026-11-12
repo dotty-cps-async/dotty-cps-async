@@ -425,7 +425,9 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
       // `apply` has no default case: for a partial function literal the compiler adds it (in ExpandSAMs), so here the
       // selector is `@unchecked`, otherwise a case with a guard gives "match may not be exhaustive".
-      val uncheckedAnnotation = '{ new scala.unchecked() }.asTerm
+      // built directly: a quoted `'{ new scala.unchecked() }` comes wrapped in Inlined
+      val uncheckedAnnotation =
+        New(TypeTree.of[scala.unchecked]).select(TypeRepr.of[scala.unchecked].typeSymbol.primaryConstructor).appliedToNone
 
       val r = fromType.asType match
         case '[ftt] =>
