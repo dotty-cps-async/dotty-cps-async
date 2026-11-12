@@ -42,9 +42,9 @@ class TestTestsCli {
   val asyncPfRebind = "t2026_11_12_async_pf_rebind"
 
   @Test def asyncPfRebindMacro(): Unit =
-    TestsCli.check(asyncPfRebind, usePlugin = false, expectedOutput = Some("List(6, 4, 3, 2, 21)\n"))
+    TestsCli.check(asyncPfRebind, usePlugin = false, expectedOutput = Some("List(6, 4, 3, 2, 21, 3, 1)\n"))
 
   @Test def asyncPfRebindPlugin(): Unit =
-    TestsCli.check(asyncPfRebind, usePlugin = true, expectedOutput = Some("List(6, 4, 3, 2, 21)\n"))
+    TestsCli.check(asyncPfRebind, usePlugin = true, expectedOutput = Some("List(6, 4, 3, 2, 21, 3, 1)\n"))
 
 }

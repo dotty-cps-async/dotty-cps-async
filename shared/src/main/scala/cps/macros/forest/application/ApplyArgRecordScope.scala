@@ -505,7 +505,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           pattern match
             case bd @ Bind(name, pat1) =>
               //  -Xcheck-macro complain that bd.symbol.flags are invalid
-              val nBSym = Symbol.newBind(Symbol.spliceOwner, name, Flags.Case, Ref(bd.symbol).tpe.widen)
+              val nBSym = Symbol.newBind(owner, name, Flags.Case, Ref(bd.symbol).tpe.widen)
               newBindings = newBindings.updated(bd.symbol, Ref(nBSym))
               Bind(nBSym, transformPattern(pat1)(owner))
             case _ =>
@@ -513,7 +513,9 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       }
 
       val nPattern = rebinder.transformPattern(caseDef.pattern)(owner)
-      val nGuard = caseDef.guard.map(TransformUtil.changeSymsInTerm(newBindings, _, owner))
+      // changeOwner also gives new symbols to the definitions inside the guard (lambdas, binds of a nested match), which are
+      // owned by the original lambda, so each copy of the guard has its own.
+      val nGuard = caseDef.guard.map(g => TransformUtil.changeSymsInTerm(newBindings, g, owner).changeOwner(owner))
       val nBody = if (processBody) TransformUtil.changeSymsInTerm(newBindings, body, owner) else body
       CaseDef(nPattern, nGuard, nBody)
     }
