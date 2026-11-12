@@ -59,8 +59,8 @@ trait PatternAwareTreeMapScope:
         case u: Unapply =>
           transformUnapply(u)(owner)
         case a: Alternatives =>
-          val nPatterns = a.patterns.map(transformPattern(_)(owner))
-          if (allSame(nPatterns, a.patterns)) a else Alternatives.copy(a)(nPatterns)
+          val nPatterns = a.patterns.mapConserve(transformPattern(_)(owner))
+          if (nPatterns eq a.patterns) a else Alternatives.copy(a)(nPatterns)
         case na: NamedArg =>
           // value of NamedArg is a pattern, not a term.
           val nValue = transformPattern(na.value)(owner)
@@ -80,9 +80,6 @@ trait PatternAwareTreeMapScope:
     def transformUnapply(u: Unapply)(owner: Symbol): Unapply =
       val nFun = transformTerm(u.fun)(owner)
       val nImplicits = transformSubTrees(u.implicits)(owner)
-      val nPatterns = u.patterns.map(transformPattern(_)(owner))
-      if ((nFun eq u.fun) && allSame(nImplicits, u.implicits) && allSame(nPatterns, u.patterns)) u
+      val nPatterns = u.patterns.mapConserve(transformPattern(_)(owner))
+      if ((nFun eq u.fun) && (nImplicits eq u.implicits) && (nPatterns eq u.patterns)) u
       else Unapply.copy(u)(nFun, nImplicits, nPatterns)
-
-    private def allSame(transformed: List[Tree], original: List[Tree]): Boolean =
-      transformed.corresponds(original)(_ eq _)
