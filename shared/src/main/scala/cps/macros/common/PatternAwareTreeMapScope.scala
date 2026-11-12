@@ -78,8 +78,13 @@ trait PatternAwareTreeMapScope:
 
     /** Transform the extractor pattern. Can be overridden to substitute the extractor. */
     def transformUnapply(u: Unapply)(owner: Symbol): Unapply =
-      val nFun = transformTerm(u.fun)(owner)
-      val nImplicits = transformSubTrees(u.implicits)(owner)
-      val nPatterns = u.patterns.mapConserve(transformPattern(_)(owner))
-      if ((nFun eq u.fun) && (nImplicits eq u.implicits) && (nPatterns eq u.patterns)) u
+      // read the accessors once: they make new trees on each call for a QuotePattern, and `patterns` makes a new list
+      // for an extractor with varargs (appending the elements of the trailing SeqLiteral)
+      val fun = u.fun
+      val implicits = u.implicits
+      val patterns = u.patterns
+      val nFun = transformTerm(fun)(owner)
+      val nImplicits = transformSubTrees(implicits)(owner)
+      val nPatterns = patterns.mapConserve(transformPattern(_)(owner))
+      if ((nFun eq fun) && (nImplicits eq implicits) && (nPatterns eq patterns)) u
       else Unapply.copy(u)(nFun, nImplicits, nPatterns)
