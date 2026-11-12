@@ -81,14 +81,15 @@ trait PatternAwareTreeMapScope:
       * are compared with `==` (not `=:=`, which looks through aliases and annotations): a false "changed" only leads to a copy.
       */
     private def isSameTree(transformed: Tree, original: Tree): Boolean =
-      (transformed eq original) || ((transformed, original) match
-        case (t: Ident, o: Ident)                       => t.symbol == o.symbol && t.tpe == o.tpe
-        case (t @ Select(tq, _), o @ Select(oq, _))     => t.symbol == o.symbol && t.tpe == o.tpe && isSameTree(tq, oq)
-        case (t: This, o: This)                         => t.symbol == o.symbol && t.tpe == o.tpe
-        case (t: Literal, o: Literal)                   => t.constant.value == o.constant.value && t.tpe == o.tpe
-        case (TypeApply(tf, targs), TypeApply(of, oargs)) => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
-        case (Apply(tf, targs), Apply(of, oargs))       => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
-        case (Typed(te, tt), Typed(oe, ot))             => isSameTree(te, oe) && isSameTree(tt, ot)
-        case (t: TypeTree, o: TypeTree)                 => t.tpe == o.tpe
-        case _                                          => false
-      )
+      (transformed eq original) || {
+        (transformed, original) match
+          case (t: Ident, o: Ident)                         => t.symbol == o.symbol && t.tpe == o.tpe
+          case (t @ Select(tq, _), o @ Select(oq, _))       => t.symbol == o.symbol && t.tpe == o.tpe && isSameTree(tq, oq)
+          case (t: This, o: This)                           => t.symbol == o.symbol && t.tpe == o.tpe
+          case (t: Literal, o: Literal)                     => t.constant.value == o.constant.value && t.tpe == o.tpe
+          case (TypeApply(tf, targs), TypeApply(of, oargs)) => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
+          case (Apply(tf, targs), Apply(of, oargs))         => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
+          case (Typed(te, tt), Typed(oe, ot))               => isSameTree(te, oe) && isSameTree(tt, ot)
+          case (t: TypeTree, o: TypeTree)                   => t.tpe == o.tpe
+          case _                                            => false
+      }
