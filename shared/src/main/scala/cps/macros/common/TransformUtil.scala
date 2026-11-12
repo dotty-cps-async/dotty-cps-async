@@ -135,9 +135,13 @@ object TransformUtil:
             // bug in default TreeTransform, should process Annotated
             Annotated.copy(a)(transformTypeTree(tp)(owner), transformTerm(annotation)(owner))
           case i @ Inferred() =>
-            Inferred(transformType(i.tpe)(owner))
+            // keep the original tree when the type is not changed (types are compared structurally)
+            val ntp = transformType(i.tpe)(owner)
+            if (ntp == i.tpe) i else Inferred(ntp)
           case t: TypeSelect =>
-            TypeSelect.copy(t)(transformTerm(t.qualifier)(owner), t.name)
+            // copy makes a new tree with a simple name when the name is derived
+            val nQualifier = transformTerm(t.qualifier)(owner)
+            if (nQualifier eq t.qualifier) t else TypeSelect.copy(t)(nQualifier, t.name)
           case _ =>
             super.transformTypeTree(tree)(owner)
 

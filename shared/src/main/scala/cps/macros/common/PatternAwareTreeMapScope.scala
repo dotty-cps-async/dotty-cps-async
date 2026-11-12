@@ -16,6 +16,10 @@ trait PatternAwareTreeMapScope:
     * `NamedArg(name, p)` inside `Unapply`, is handled as a term, and `transformTerm` fails on `p` with MatchError (see
     * tests-cli/t2026_09_24_named_pattern_treemap). Also the default TreeMap does not go inside the pattern of `Bind`.
     *
+    * Overrides of `transformTerm` and `transformTypeTree` should return the original tree when nothing in it is changed, as the
+    * default TreeMap does (lists are transformed with `mapConserve`, and `copy` returns the original tree when the subtrees are the
+    * same): `transformPattern` checks with `eq` whether the subtrees are changed, and rebuilds the pattern if they are.
+    *
     * It is defined inside a scope, because a top-level `class PatternAwareTreeMap[Q <: Quotes & Singleton](using val q: Q) extends
     * q.reflect.TreeMap` is unusable: inherited methods are typed with `PatternAwareTreeMap.this.q.reflect.Term`, which does not
     * unify with `quotes.reflect.Term` at the call site.
@@ -28,6 +32,14 @@ trait PatternAwareTreeMapScope:
         tree.guard.map(transformTerm(_)(owner)),
         transformTerm(tree.rhs)(owner)
       )
+
+    /** The default TreeMap does not transform the subtrees of `TypeBind`, but copies it with the name as a String, which makes a
+      * new tree, and a derived name (as `T$1` of the type argument in `case Node[T](...)`) becomes a simple name.
+      */
+    override def transformTypeTree(tree: TypeTree)(owner: Symbol): TypeTree =
+      tree match
+        case _: TypeBind => tree
+        case _           => super.transformTypeTree(tree)(owner)
 
     /** Transform the pattern, keeping the original trees when nothing in them is changed.
       *
@@ -56,12 +68,11 @@ trait PatternAwareTreeMapScope:
         case TypedOrTest(inner, tpt) =>
           val nInner = transformPattern(inner)(owner)
           val nTpt = transformTypeTree(tpt)(owner)
-          if ((nInner eq inner) && isSameTree(nTpt, tpt)) pattern else TypedOrTest.copy(pattern)(nInner, nTpt)
+          if ((nInner eq inner) && (nTpt eq tpt)) pattern else TypedOrTest.copy(pattern)(nInner, nTpt)
         case w: Wildcard =>
           w
         case t: Term =>
-          val nt = transformTerm(t)(owner)
-          if (isSameTree(nt, t)) t else nt
+          transformTerm(t)(owner)
         case other =>
           transformTree(other)(owner)
 
@@ -70,26 +81,8 @@ trait PatternAwareTreeMapScope:
       val nFun = transformTerm(u.fun)(owner)
       val nImplicits = transformSubTrees(u.implicits)(owner)
       val nPatterns = u.patterns.map(transformPattern(_)(owner))
-      if (isSameTree(nFun, u.fun) && nImplicits.corresponds(u.implicits)(isSameTree) && allSame(nPatterns, u.patterns)) u
+      if ((nFun eq u.fun) && allSame(nImplicits, u.implicits) && allSame(nPatterns, u.patterns)) u
       else Unapply.copy(u)(nFun, nImplicits, nPatterns)
 
     private def allSame(transformed: List[Tree], original: List[Tree]): Boolean =
       transformed.corresponds(original)(_ eq _)
-
-    /** The default TreeMap creates new trees also when nothing is changed (for example, for `TypeApply`), so compare the trees
-      * which can be inside patterns (extractors, literals, stable identifiers, type trees) by structure, symbols and types. Types
-      * are compared with `==` (not `=:=`, which looks through aliases and annotations): a false "changed" only leads to a copy.
-      */
-    private def isSameTree(transformed: Tree, original: Tree): Boolean =
-      (transformed eq original) || {
-        (transformed, original) match
-          case (t: Ident, o: Ident)                         => t.symbol == o.symbol && t.tpe == o.tpe
-          case (t @ Select(tq, _), o @ Select(oq, _))       => t.symbol == o.symbol && t.tpe == o.tpe && isSameTree(tq, oq)
-          case (t: This, o: This)                           => t.symbol == o.symbol && t.tpe == o.tpe
-          case (t: Literal, o: Literal)                     => t.constant.value == o.constant.value && t.tpe == o.tpe
-          case (TypeApply(tf, targs), TypeApply(of, oargs)) => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
-          case (Apply(tf, targs), Apply(of, oargs))         => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
-          case (Typed(te, tt), Typed(oe, ot))               => isSameTree(te, oe) && isSameTree(tt, ot)
-          case (t: TypeTree, o: TypeTree)                   => t.tpe == o.tpe
-          case _                                            => false
-      }
