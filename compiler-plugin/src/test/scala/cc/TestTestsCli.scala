@@ -47,4 +47,14 @@ class TestTestsCli {
   @Test def asyncPfRebindPlugin(): Unit =
     TestsCli.check(asyncPfRebind, usePlugin = true, expectedOutput = Some("List(6, 4, 3, 2, 21, 3, 1)\n"))
 
+  // https://github.com/dotty-cps-async/dotty-cps-async/issues/155
+  val asyncPfOnce = "t2026_11_13_async_pf_once"
+  val asyncPfOnceOutput = "List(List(1, 3), 3, List(1, 3), 3, List(1, 2), 4, Some(2), 4, Some(2), 1)\n"
+
+  @Test def asyncPfOnceMacro(): Unit =
+    TestsCli.check(asyncPfOnce, usePlugin = false, expectedOutput = Some(asyncPfOnceOutput))
+
+  @Test def asyncPfOncePlugin(): Unit =
+    TestsCli.check(asyncPfOnce, usePlugin = true, expectedOutput = Some(asyncPfOnceOutput))
+
 }
