@@ -423,6 +423,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       def termCast[E: Type](term: Term): Expr[E] =
         term.asExprOf[E]
 
+      // `apply` has no default case: for a partial function literal the compiler adds it (in ExpandSAMs), so here the
+      // selector is `@unchecked`, otherwise a case with a guard gives "match may not be exhaustive".
+      val uncheckedAnnotation = '{ new scala.unchecked() }.asTerm
+
       val r = fromType.asType match
         case '[ftt] =>
           toInF.asType match
@@ -438,7 +442,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                         case m @ Match(scr, caseDefs) =>
                           val b0 = Map(matchVar.symbol -> 'x2.asTerm)
                           val nCaseDefs = caseDefs.map(cd => rebindCaseDef(cd, cd.rhs, b0, true, Symbol.spliceOwner))
-                          val nTerm = Match('x2.asTerm, nCaseDefs)
+                          val selector = TransformUtil.withUncheckedAnnotations(using qctx)('x2.asTerm, List(uncheckedAnnotation))
+                          val nTerm = Match(selector, nCaseDefs)
                           shiftType match
                             case ApplicationShiftType.CPS_ONLY =>
                               termCast[ttt](nTerm)

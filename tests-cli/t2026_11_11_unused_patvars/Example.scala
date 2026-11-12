@@ -42,6 +42,10 @@ def pair(): (Int, Int) = (1, 2)
     await(Future(pair())) match
       case (a, b) => a - b
   }
-  val r = Await.result(Future.sequence(List(f1, f2, f3, f4, f5)), 5.seconds)
+  // partial function with await, used binds (async collect)
+  val f6 = async[Future] {
+    List((1, 2), (3, 4), (5, 0)).collect { case (a, b) if b > 0 => await(Future(a * b)) }.sum
+  }
+  val r = Await.result(Future.sequence(List(f1, f2, f3, f4, f5, f6)), 5.seconds)
   println(r)
-  assert(r == List(3, 3, 4, 2, -1))
+  assert(r == List(3, 3, 4, 2, -1, 14))

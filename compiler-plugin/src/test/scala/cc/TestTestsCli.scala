@@ -33,9 +33,9 @@ class TestTestsCli {
   val unusedPatvars = "t2026_11_11_unused_patvars"
 
   @Test def unusedPatvarsMacro(): Unit =
-    TestsCli.check(unusedPatvars, usePlugin = false, expectedOutput = Some("List(3, 3, 4, 2, -1)\n"))
+    TestsCli.check(unusedPatvars, usePlugin = false, expectedOutput = Some("List(3, 3, 4, 2, -1, 14)\n"))
 
   @Test def unusedPatvarsPlugin(): Unit =
-    TestsCli.check(unusedPatvars, usePlugin = true, expectedOutput = Some("List(3, 3, 4, 2, -1)\n"))
+    TestsCli.check(unusedPatvars, usePlugin = true, expectedOutput = Some("List(3, 3, 4, 2, -1, 14)\n"))
 
 }

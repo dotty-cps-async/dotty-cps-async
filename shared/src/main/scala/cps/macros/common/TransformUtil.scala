@@ -54,6 +54,29 @@ object TransformUtil:
     val lambda = Lambda(owner, mt, rhsFn)
     TypeApply(Select.unique(lambda, "asInstanceOf"), List(Inferred(createFunctionType(List(paramType), resultType))))
 
+  /** Annotations of the scrutinee type which disable exhaustivity checking (`@unchecked` and `@RuntimeChecked`, which is
+    * added by `.runtimeChecked`).
+    */
+  def exhaustivityUncheckedAnnotations(using Quotes)(tpe: quotes.reflect.TypeRepr): List[quotes.reflect.Term] =
+    import quotes.reflect._
+    tpe match
+      case AnnotatedType(underlying, annot) =>
+        val rest = exhaustivityUncheckedAnnotations(underlying)
+        annot.tpe.typeSymbol.fullName match
+          case "scala.unchecked" | "scala.annotation.internal.RuntimeChecked" => annot :: rest
+          case _                                                            => rest
+      case _ => Nil
+
+  /** New selector `x` of a match with the annotations from [[exhaustivityUncheckedAnnotations]] of the original selector: they
+    * are lost in the type of a new lambda parameter (as typer does for irrefutable patterns or partial functions).
+    */
+  def withUncheckedAnnotations(using
+      Quotes
+  )(x: quotes.reflect.Term, annotations: List[quotes.reflect.Term]): quotes.reflect.Term =
+    import quotes.reflect._
+    if (annotations.isEmpty) then x
+    else Typed(x, Inferred(annotations.foldRight(x.tpe.widen)((annot, tp) => AnnotatedType(tp, annot))))
+
   def changeSymsInTerm(using
       Quotes
   )(
