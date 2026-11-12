@@ -13,6 +13,13 @@ class TestTestsCli {
     assertEquals(List("-Xa", "-Xb"), TestsCli.directiveValues("\"-Xa\", \"-Xb\""))
   }
 
+  @Test def harnessFormats(): Unit = {
+    val c = TestsCli.readCase("t2026_11_12_harness_formats")
+    assertEquals(List("-Wunused:imports,privates", "-Werror"), c.options)
+    assertEquals(Some("example.probe"), c.mainClass)
+    TestsCli.check("t2026_11_12_harness_formats", usePlugin = false, expectedOutput = Some("ok\n"))
+  }
+
   // https://github.com/dotty-cps-async/dotty-cps-async/issues/143
   val unusedContextParam = "t2026_11_11_unused_context_param"
 
