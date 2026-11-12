@@ -33,13 +33,14 @@ trait PatternAwareTreeMapScope:
         transformTerm(tree.rhs)(owner)
       )
 
-    /** The default TreeMap does not transform the subtrees of `TypeBind`, but copies it with the name as a String, which makes a
-      * new tree, and a derived name (as `T$1` of the type argument in `case Node[T](...)`) becomes a simple name.
+    /** The default TreeMap does not transform the subtrees of `TypeBind`, `TypeSelect` and `TypeProjection`, but copies them with
+      * the name as a String, which makes a new tree, and a derived name (as `T$1` of the type argument in `case Node[T](...)`)
+      * becomes a simple name.
       */
     override def transformTypeTree(tree: TypeTree)(owner: Symbol): TypeTree =
       tree match
-        case _: TypeBind => tree
-        case _           => super.transformTypeTree(tree)(owner)
+        case _: TypeBind | _: TypeSelect | _: TypeProjection => tree
+        case _                                             => super.transformTypeTree(tree)(owner)
 
     /** Transform the pattern, keeping the original trees when nothing in them is changed.
       *
