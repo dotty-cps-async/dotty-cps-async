@@ -495,29 +495,24 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         owner: Symbol
     ): CaseDef = {
 
-      def rebindPatterns(pattern: Tree, map: Map[Symbol, Term]): (Tree, Map[Symbol, Term]) = {
-        pattern match
-          case bd @ Bind(name, pat1) =>
-            val bSym = bd.symbol
-            //  -Xcheck-macro complain that bSyn.flags are invalid
-            // val nBSym = Symbol.newBind(Symbol.spliceOwner, name, bSym.flags, Ref(bSym).tpe.widen)
-            val nBSym = Symbol.newBind(Symbol.spliceOwner, name, Flags.Case, Ref(bSym).tpe.widen)
-            val nMap = map.updated(bSym, Ref(nBSym))
-            val (nPat1, nMap1) = rebindPatterns(pat1, nMap)
-            (Bind(nBSym, nPat1), nMap1)
-          case u @ Unapply(fun, implicits, patterns) =>
-            val s0: (List[Tree], Map[Symbol, Term]) = (List.empty, Map.empty)
-            val sR = patterns.foldLeft(s0) { (s, e) =>
-              val (ep, em) = rebindPatterns(e, s._2)
-              (ep :: s._1, em)
-            }
-            val nPatterns = sR._1.reverse
-            (Unapply.copy(u)(fun, implicits, nPatterns), sR._2)
-          case other =>
-            (other, map)
+      // The case is copied into `isDefinedAt` and `apply`, so all binds of the pattern (also under extractors, type tests and
+      // named arguments) receive new symbols, and the guard and the body are changed to use them.
+      // The new bind receives the name as a String, so a derived name (as `$1$`) becomes a simple name: the quotes API has no
+      // way to create a derived name.
+      var newBindings = assoc
+      val rebinder = new PatternAwareTreeMap {
+        override def transformPattern(pattern: Tree)(owner: Symbol): Tree =
+          pattern match
+            case bd @ Bind(name, pat1) =>
+              //  -Xcheck-macro complain that bd.symbol.flags are invalid
+              val nBSym = Symbol.newBind(Symbol.spliceOwner, name, Flags.Case, Ref(bd.symbol).tpe.widen)
+              newBindings = newBindings.updated(bd.symbol, Ref(nBSym))
+              Bind(nBSym, transformPattern(pat1)(owner))
+            case _ =>
+              super.transformPattern(pattern)(owner)
       }
 
-      val (nPattern, newBindings) = rebindPatterns(caseDef.pattern, assoc)
+      val nPattern = rebinder.transformPattern(caseDef.pattern)(owner)
       val nGuard = caseDef.guard.map(TransformUtil.changeSymsInTerm(newBindings, _, owner))
       val nBody = if (processBody) TransformUtil.changeSymsInTerm(newBindings, body, owner) else body
       CaseDef(nPattern, nGuard, nBody)

@@ -38,4 +38,13 @@ class TestTestsCli {
   @Test def unusedPatvarsPlugin(): Unit =
     TestsCli.check(unusedPatvars, usePlugin = true, expectedOutput = Some("List(3, 3, 4, 2, -1, 14)\n"))
 
+  // https://github.com/dotty-cps-async/dotty-cps-async/issues/153
+  val asyncPfRebind = "t2026_11_12_async_pf_rebind"
+
+  @Test def asyncPfRebindMacro(): Unit =
+    TestsCli.check(asyncPfRebind, usePlugin = false, expectedOutput = Some("List(6, 4, 3, 2, 21)\n"))
+
+  @Test def asyncPfRebindPlugin(): Unit =
+    TestsCli.check(asyncPfRebind, usePlugin = true, expectedOutput = Some("List(6, 4, 3, 2, 21)\n"))
+
 }
