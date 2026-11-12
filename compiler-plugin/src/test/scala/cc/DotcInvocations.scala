@@ -105,13 +105,13 @@ class DotcInvocations(silent: Boolean = true, scalaJs: Boolean = false) {
     * @return
     *   list of scala files
     */
-  def scalaFilesIn(path: Path): List[String] = {
+  def scalaFilesIn(path: Path, skipDir: String => Boolean = _ => false): List[String] = {
     if (!path.exists) {
       throw new RuntimeException(s"Path ${path} does not exist")
     }
     if (path.isDirectory) {
       val dir = path.toDirectory
-      dir.list.toList.flatMap(scalaFilesIn)
+      dir.list.toList.filterNot(p => p.isDirectory && skipDir(p.name)).flatMap(scalaFilesIn(_, skipDir))
     } else if (path.isFile && path.name.endsWith(".scala")) {
       List(path.toString)
     } else {
