@@ -24,7 +24,7 @@ object TestsCli {
 
   private val Directive = """^\s*//>\s*using\s+(\S+)\s*(.*)$""".r
   // `package p`, `package p:`, `package p {`, `package p // comment`, but not `package object`
-  private val Package = """^\s*package\s+(?!object\b)([\w.]+)""".r
+  private val Package = """^\s*package\s+(?!object\b)([\w.]+)""".r.unanchored
   // also `@main()` and `@main` on its own line
   private val MainMethod = """@main\b(?:\s*\(\s*\))?\s+def\s+(\w+)""".r
 
