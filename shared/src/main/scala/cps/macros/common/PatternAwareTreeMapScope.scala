@@ -34,12 +34,16 @@ trait PatternAwareTreeMapScope:
       * `Bind.copy` receives the name as a String, so a compiler-generated (derived) name, as `$1$` in the desugaring of
       * `val (a, b) = e` into `e match { case $1$ @ Tuple2(a @ _, b @ _) => $1$ }`, becomes a simple name, and `-Wunused:patvars`
       * reports it as an unused pattern variable (https://github.com/dotty-cps-async/dotty-cps-async/issues/148).
+      * When the pattern of such a bind is changed, the bind is built from its symbol, which keeps the name, but receives the macro
+      * position (binds with derived names are not reported by -Wunused). Binds with user names are copied, keeping the position.
       */
     def transformPattern(pattern: Tree)(owner: Symbol): Tree =
       pattern match
         case b: Bind =>
           val nPattern = transformPattern(b.pattern)(owner)
-          if (nPattern eq b.pattern) b else Bind.copy(b)(b.name, nPattern)
+          if (nPattern eq b.pattern) b
+          else if (b.name.contains('$')) Bind(b.symbol, nPattern)
+          else Bind.copy(b)(b.name, nPattern)
         case u: Unapply =>
           transformUnapply(u)(owner)
         case a: Alternatives =>
@@ -72,23 +76,19 @@ trait PatternAwareTreeMapScope:
     private def allSame(transformed: List[Tree], original: List[Tree]): Boolean =
       transformed.corresponds(original)(_ eq _)
 
-    /** The default TreeMap creates new trees also when nothing is changed (for example, for `TypeApply`), so compare the
-      * structure, referenced symbols and types.
+    /** The default TreeMap creates new trees also when nothing is changed (for example, for `TypeApply`), so compare the trees
+      * which can be inside patterns (extractors, literals, stable identifiers, type trees) by structure, symbols and types. Types
+      * are compared with `==` (not `=:=`, which looks through aliases and annotations): a false "changed" only leads to a copy.
       */
     private def isSameTree(transformed: Tree, original: Tree): Boolean =
-      (transformed eq original) || (
-        transformed.show(using Printer.TreeStructure) == original.show(using Printer.TreeStructure) &&
-          treeAtoms(transformed).corresponds(treeAtoms(original)) { case ((s1, t1), (s2, t2)) => s1 == s2 && t1 =:= t2 }
+      (transformed eq original) || ((transformed, original) match
+        case (t: Ident, o: Ident)                       => t.symbol == o.symbol && t.tpe == o.tpe
+        case (t @ Select(tq, _), o @ Select(oq, _))     => t.symbol == o.symbol && t.tpe == o.tpe && isSameTree(tq, oq)
+        case (t: This, o: This)                         => t.symbol == o.symbol && t.tpe == o.tpe
+        case (t: Literal, o: Literal)                   => t.constant.value == o.constant.value && t.tpe == o.tpe
+        case (TypeApply(tf, targs), TypeApply(of, oargs)) => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
+        case (Apply(tf, targs), Apply(of, oargs))       => isSameTree(tf, of) && targs.corresponds(oargs)(isSameTree)
+        case (Typed(te, tt), Typed(oe, ot))             => isSameTree(te, oe) && isSameTree(tt, ot)
+        case (t: TypeTree, o: TypeTree)                 => t.tpe == o.tpe
+        case _                                          => false
       )
-
-    /** symbols and types of references and type trees, in the order of traversal */
-    private def treeAtoms(tree: Tree): List[(Symbol, TypeRepr)] =
-      new TreeAccumulator[List[(Symbol, TypeRepr)]] {
-        def foldTree(acc: List[(Symbol, TypeRepr)], tree: Tree)(owner: Symbol): List[(Symbol, TypeRepr)] =
-          tree match
-            case t: Ident    => (t.symbol, t.tpe) :: acc
-            case t: Select   => foldTree((t.symbol, t.tpe) :: acc, t.qualifier)(owner)
-            case t: This     => (t.symbol, t.tpe) :: acc
-            case t: TypeTree => (t.symbol, t.tpe) :: acc
-            case _           => foldOverTree(acc, tree)(owner)
-      }.foldTree(Nil, tree)(Symbol.spliceOwner)
