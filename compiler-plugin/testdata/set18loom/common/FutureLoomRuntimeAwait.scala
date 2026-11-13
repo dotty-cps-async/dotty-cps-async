@@ -19,9 +19,12 @@ object FutureLoomRuntimeAwait extends LoomRuntimeAwait[Future] {
         // it's depend on implementation of thread pool,
         //    in some cases this is not needed (because thread pool create virtual thread for each task),
         //    but we can't know this. 
-        blocking(
-          completableFuture.get()
-        )
+        blocking {
+          try completableFuture.get()
+          catch
+            case ex: ExecutionException =>
+              throw ex.getCause()
+        }
     }
 
 }
