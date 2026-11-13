@@ -25,6 +25,19 @@ object Even:
     calls += 1
     if x % 2 == 0 then Some(x / 2) else None
 
+object Guard:
+  var calls = 0
+  def check(b: Boolean): Boolean =
+    calls += 1
+    b
+
+class Pipe(xs: List[Int]):
+  def collectMap(pf: PartialFunction[Int, Int], f: Int => Int): List[Int] = xs.collect(pf).map(f)
+  def collectMap_async[F[_]](m: CpsMonad[F], pf: PartialFunction[Int, F[Int]], f: Int => F[Int]): F[List[Int]] =
+    xs.collect(pf).foldRight(m.pure(List.empty[Int])) { (fv, acc) =>
+      m.flatMap(fv)(v => m.flatMap(f(v))(r => m.map(acc)(r :: _)))
+    }
+
 def run[T](f: => Future[T]): T = Await.result(f, 5.seconds)
 
 @main def test(): Unit =
@@ -54,6 +67,19 @@ def run[T](f: => Future[T]): T = Await.result(f, 5.seconds)
     Option(4).collect { case Even(h) => await(Future(h)) }
   })
   val n4 = Even.calls
-  val r = List(sync, syncCalls, r1, n1, r2, n2, r3, n3, r4, n4)
+  // Try.recover
+  val failed: scala.util.Try[Int] = scala.util.Failure(new RuntimeException("e"))
+  Guard.calls = 0
+  val r5 = run(async[Future] {
+    failed.recover { case _: RuntimeException if Guard.check(true) => await(Future(5)) }
+  })
+  val n5 = Guard.calls
+  // sync partial function, shifted because of the async lambda
+  Guard.calls = 0
+  val r6 = run(async[Future] {
+    Pipe(List(1, 2, 3)).collectMap({ case x if Guard.check(x % 2 == 0) => x * 10 }, y => y + await(Future(y)))
+  })
+  val n6 = Guard.calls
+  val r = List(sync, syncCalls, r1, n1, r2, n2, r3, n3, r4, n4, r5, n5, r6, n6)
   println(r)
-  assert(r == List(List(1, 3), 3, List(1, 3), 3, List(1, 2), 4, Some(2), 4, Some(2), 1))
+  assert(r == List(List(1, 3), 3, List(1, 3), 3, List(1, 2), 4, Some(2), 4, Some(2), 1, scala.util.Success(5), 1, List(40), 3))

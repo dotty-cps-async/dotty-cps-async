@@ -49,7 +49,7 @@ class TestTestsCli {
 
   // https://github.com/dotty-cps-async/dotty-cps-async/issues/155
   val asyncPfOnce = "t2026_11_13_async_pf_once"
-  val asyncPfOnceOutput = "List(List(1, 3), 3, List(1, 3), 3, List(1, 2), 4, Some(2), 4, Some(2), 1)\n"
+  val asyncPfOnceOutput = "List(List(1, 3), 3, List(1, 3), 3, List(1, 2), 4, Some(2), 4, Some(2), 1, Success(5), 1, List(40), 3)\n"
 
   @Test def asyncPfOnceMacro(): Unit =
     TestsCli.check(asyncPfOnce, usePlugin = false, expectedOutput = Some(asyncPfOnceOutput))

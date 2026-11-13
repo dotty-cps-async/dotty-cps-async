@@ -55,6 +55,9 @@ object TestCBS3HoFunNoSubst {
   def collectFrom(x: Int)(pf: PartialFunction[Int, Int]): List[Int] =
      List(x, x + 1, x + 2).collect(pf)
 
+  def collectMap(x: Int)(pf: PartialFunction[Int, Int], f: Int => Int): List[Int] =
+     List(x, x + 1, x + 2).collect(pf).map(f)
+
 
 
 } 
@@ -100,6 +103,14 @@ class TestCBS3HoFunNoSubst:
      val r = c.run()
      assert(r == Success(List(4)), s"r=$r")
      assert(guardCalls == 3, s"guardCalls=$guardCalls")
+
+  // sync partial function, passed with runtime await because of the async lambda
+  @Test def testSyncPartialFunctionWithAsyncLambda(): Unit =
+     val c = async[ComputationBound]{
+        collectMap(1)({ case x if x % 2 == 0 => x * 10 }, y => y + await(T1.cbi(y)))
+     }
+     val r = c.run()
+     assert(r == Success(List(40)), s"r=$r")
 
   @Test def testMyMap(): Unit =
      val c = async[ComputationBound]{

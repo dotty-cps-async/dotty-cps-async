@@ -388,20 +388,43 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         shiftType: ApplicationShiftType
     ): Term =
       if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"createAsyncPartialFunction: from = $from, to=$to")
-      // with CPS_RUNTIME_AWAIT the partial function keeps its type, and the result of each case is awaited
-      val (resType, caseRhs) = shiftType match
+
+      def asMatch(body: Term): Match =
+        body match
+          case m: Match => m
+          case other =>
+            throw MacroError(s"assumed that the body of partial function is Match, we have $other", posExprs(term))
+
+      def mapCases(m: Match, f: Term => Term): Match =
+        Match.copy(m)(m.scrutinee, m.cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, f(cd.rhs))))
+
+      def pureCase(rhs: Term): Term =
+        Apply(TypeApply(Select.unique(cpsCtx.monad.asTerm, "pure"), List(Inferred(to))), List(rhs))
+
+      // the case is `F[r]`, where `r` is the (widened) type of the match, which conforms to `to`
+      def awaitCase(runtimeAwait: Term)(rhs: Term): Term =
+        rhs.tpe.widen.asType match
+          case '[F[r]] if rhs.tpe.widen <:< TypeRepr.of[F[r]] => applyRuntimeAwait(runtimeAwait, rhs, TypeRepr.of[r])
+          case _ => throw MacroError(s"F[?] expected, we have ${rhs.tpe.widen.show}", posExprs(term))
+
+      // The body can be sync, when the partial function is shifted because of other arguments.
+      // With CPS_RUNTIME_AWAIT the partial function keeps its type, and the result of each async case is awaited.
+      val (resType, nMatch) = shiftType match
+        case ApplicationShiftType.CPS_ONLY =>
+          val toInF = TypeRepr.of[F].appliedTo(List(to))
+          cpsBody.syncOrigin match
+            case Some(syncBody) => (toInF, mapCases(asMatch(syncBody), pureCase))
+            case None           => (toInF, asMatch(cpsBody.transformed))
         case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
-          optRuntimeAwait match
-            case Some(runtimeAwait) => (to, (rhs: Term) => applyRuntimeAwait(runtimeAwait, rhs, to))
+          cpsBody.syncOrigin match
+            case Some(syncBody) => (to, asMatch(syncBody))
             case None =>
-              throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
-        case _ =>
-          (TypeRepr.of[F].appliedTo(List(to)), (rhs: Term) => rhs)
-      val nMatch = cpsBody.transformed match
-        case m @ Match(scrutinee, cases) =>
-          Match.copy(m)(scrutinee, cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, caseRhs(cd.rhs))))
-        case other =>
-          throw MacroError(s"assumed that transformed match is Match, we have $other", posExprs(term))
+              optRuntimeAwait match
+                case Some(runtimeAwait) => (to, mapCases(asMatch(cpsBody.transformed), awaitCase(runtimeAwait)))
+                case None =>
+                  throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
+        case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
+          throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
       val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
       val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
       lambda match
