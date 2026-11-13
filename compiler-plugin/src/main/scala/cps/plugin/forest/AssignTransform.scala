@@ -17,9 +17,8 @@ object AssignTransform {
         lhsQual.asyncKind match
           case AsyncKind.Sync =>
             // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
-            val lhs =
-              if (lhsQual.isOriginEqSync) then term.lhs
-              else lhsQual.unpure.get.select(sel.symbol).withSpan(sel.span)
+            val qual = lhsQual.unpure.get
+            val lhs = if (qual eq sel.qualifier) then term.lhs else qual.select(sel.symbol).withSpan(sel.span)
             lhsSyncAssign(term, lhs, owner, nesting)
           case AsyncKind.Async(internalKind) =>
             lhsSelectAsyncAssign(term, sel, lhsQual, owner, nesting)
@@ -40,11 +39,9 @@ object AssignTransform {
     val cpsRhs = RootTransform(term.rhs, owner, nesting)
     cpsRhs.asyncKind match
       case AsyncKind.Sync =>
-        if (cpsRhs.isOriginEqSync && (lhs eq term.lhs)) {
-          CpsTree.unchangedPure(term, owner)
-        } else {
-          CpsTree.pure(term, owner, Assign(lhs, cpsRhs.unpure.get).withSpan(term.span))
-        }
+        val rhs = cpsRhs.unpure.get
+        if ((rhs eq term.rhs) && (lhs eq term.lhs)) then CpsTree.unchangedPure(term, owner)
+        else CpsTree.pure(term, owner, Assign(lhs, rhs).withSpan(term.span))
       case AsyncKind.Async(internalKind) =>
         val sym = newSymbol(owner, "xAssign".toTermName, Flags.EmptyFlags, term.rhs.tpe.widen, Symbols.NoSymbol)
         val valDef = ValDef(sym.asTerm, EmptyTree)

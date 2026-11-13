@@ -43,4 +43,13 @@ class TestBooleanOpWithChangedSyncPart {
     FutureCompleter(c)
   }
 
+  // the left operand is changed but sync, the right is async
+  @Test def testOrWithChangedSyncLeftAsyncRight() = {
+    val c = async[Future] {
+      val b = List(1).map(y => { await(g(y)); Future.successful(y) }).isEmpty || await(Future.successful(true))
+      assert(b)
+    }
+    FutureCompleter(c)
+  }
+
 }

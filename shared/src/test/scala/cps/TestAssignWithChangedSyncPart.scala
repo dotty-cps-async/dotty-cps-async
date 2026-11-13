@@ -30,6 +30,16 @@ class TestAssignWithChangedSyncPart {
     FutureCompleter(c)
   }
 
+  // the assigned variable has a literal type, the right part is async: the type of the right part is not widened
+  @Test def testAssignAsyncRightToLiteralTypedVar() = {
+    val c = async[Future] {
+      var s: "a" | "b" = "a"
+      s = await(Future.successful["b"]("b"))
+      assert(s == "b", s"s=$s")
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier of the left part is changed but sync, the right part is sync
   @Test def testAssignChangedSyncQualifier() = {
     val c = async[Future] {
