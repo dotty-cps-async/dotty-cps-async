@@ -23,10 +23,6 @@ object WhileTransform:
 
     val DEBUG = false
 
-    // a sync part can be changed (e.g. contains an unshifted lambda): then the changed tree should be used
-    def syncPart[A](r: CpsExpr[F, A], origin: Expr[A]): Expr[A] =
-      if (r.isChanged) r.syncOrigin.get else origin
-
     val unitBuilder = {
       if (!cpsCond.isAsync)
         if (!cpsRepeat.isAsync)
@@ -53,7 +49,7 @@ object WhileTransform:
           CpsExpr.async[F, Unit](
             monad,
             '{
-              cps.runtime.WhileHelper.w01(${ monad }, ${ syncPart(cpsCond, cond) }, ${ cpsRepeat.transformed })
+              cps.runtime.WhileHelper.w01(${ monad }, ${ cpsCond.syncOriginOr(cond) }, ${ cpsRepeat.transformed })
             }
           )
       else // (cpsCond.isAsync)
@@ -78,7 +74,7 @@ object WhileTransform:
         CpsExpr.async[F, Unit](
           monad,
           '{
-            cps.runtime.WhileHelper.w10(${ monad }, ${ cpsCond.transformed }, ${ syncPart(cpsRepeat, repeat) })
+            cps.runtime.WhileHelper.w10(${ monad }, ${ cpsCond.transformed }, ${ cpsRepeat.syncOriginOr(repeat) })
           }
         )
       } else {

@@ -76,6 +76,12 @@ trait CpsExpr[F[_]: Type, T: Type](monad: Expr[CpsMonad[F]], prev: Seq[ExprTreeG
 
   def syncOrigin(using Quotes): Option[Expr[T]]
 
+  /** Tree of a sync expression for the generated code: the changed tree, when the transformation changed the expression (e.g. an inner
+    * lambda is unshifted), otherwise `origin`. Should be called only for a sync expression.
+    */
+  def syncOriginOr(origin: Expr[T])(using Quotes): Expr[T] =
+    if (isChanged) syncOrigin.get else origin
+
   // "use monad instead")
   @Deprecated()
   def asyncMonad: Expr[CpsMonad[F]] = monad
