@@ -44,7 +44,7 @@ class TestAsyncPartialFunctionOnce {
 
   import TestAsyncPartialFunctionOnce.*
 
-  @Test def testCollectGuardWithSideEffects(): Unit = {
+  @Test def testCollectGuardWithSideEffects() = {
     val counter = Counter()
     // true on odd calls: a guard evaluated twice for the same element changes its result
     def tick(): Boolean = counter.check(counter.calls % 2 == 0)
@@ -56,7 +56,7 @@ class TestAsyncPartialFunctionOnce {
     FutureCompleter(c)
   }
 
-  @Test def testCollectExtractorWithSideEffects(): Unit = {
+  @Test def testCollectExtractorWithSideEffects() = {
     val Even = EvenExtractor()
     val c = async[Future] {
       val r = List(1, 2, 3, 4).collect { case Even(h) => await(Future.successful(h)) }
@@ -66,7 +66,7 @@ class TestAsyncPartialFunctionOnce {
     FutureCompleter(c)
   }
 
-  @Test def testCollectFirst(): Unit = {
+  @Test def testCollectFirst() = {
     val Even = EvenExtractor()
     val c = async[Future] {
       val r = List(1, 2, 3, 4).collectFirst { case Even(h) if h > 1 => await(Future.successful(h)) }
@@ -76,7 +76,7 @@ class TestAsyncPartialFunctionOnce {
     FutureCompleter(c)
   }
 
-  @Test def testOptionCollect(): Unit = {
+  @Test def testOptionCollect() = {
     val Even = EvenExtractor()
     val c = async[Future] {
       val r = Option(4).collect { case Even(h) => await(Future.successful(h)) }
@@ -86,7 +86,7 @@ class TestAsyncPartialFunctionOnce {
     FutureCompleter(c)
   }
 
-  @Test def testTryRecover(): Unit = {
+  @Test def testTryRecover() = {
     val counter = Counter()
     val failed: Try[Int] = Failure(new RuntimeException("e"))
     val c = async[Future] {
@@ -98,7 +98,7 @@ class TestAsyncPartialFunctionOnce {
   }
 
   // the sync partial function is shifted because of the async lambda
-  @Test def testSyncPartialFunctionWithAsyncLambda(): Unit = {
+  @Test def testSyncPartialFunctionWithAsyncLambda() = {
     val counter = Counter()
     val c = async[Future] {
       val r = Pipe(List(1, 2, 3)).collectMap({ case x if counter.check(x % 2 == 0) => x * 10 }, y => y + await(Future.successful(y)))

@@ -40,7 +40,7 @@ class TestPECnt:
   }
 
 
-  @Test def peCnt_no_automatic_coloring9(): Unit =
+  @Test def peCnt_no_automatic_coloring9() =
      val counter = new PEIntRef(9)
      val c = cntNoAutomaticColoring(counter)
      val future = c.unsafeRunFuture().map{ log =>

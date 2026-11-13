@@ -26,7 +26,7 @@ class TestShiftSIP47 {
   import TestSiftSIP47Scope.*
 
   @Test
-  def testShiftSIP47(): Unit = {
+  def testShiftSIP47() = {
     val f = async[Future] {
       given String = "Hello"
       val result = await(method("arg1", "arg2"))
@@ -36,7 +36,7 @@ class TestShiftSIP47 {
   }
 
   @Test
-  def testSIP47AwaitInArgs(): Unit = {
+  def testSIP47AwaitInArgs() = {
     val f = async[Future] {
       given String = "Hello"
       val result = await(method[Int](using summon[String])[Long](await(Future.successful("a1")), await(Future.successful("a2"))))
@@ -46,7 +46,7 @@ class TestShiftSIP47 {
   }
 
   @Test
-  def testSIP47AwaitInBothClauses(): Unit = {
+  def testSIP47AwaitInBothClauses() = {
     val f = async[Future] {
       val r = pure[Int](await(Future.successful(1)))[String](await(Future.successful("x")))
       assertEquals((1, "x"), r)
