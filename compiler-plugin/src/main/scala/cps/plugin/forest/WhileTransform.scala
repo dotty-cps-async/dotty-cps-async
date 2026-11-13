@@ -27,14 +27,14 @@ object WhileTransform {
         val helperMethod = Symbols.requiredMethod("cps.runtime.WhileHelper.w01")
         val nTree = Apply(
           TypeApply(ref(helperMethod), List(TypeTree(tctx.monadType))),
-          List(tctx.cpsMonadRef, term.cond, cpsBody.transformed)
+          List(tctx.cpsMonadRef, cpsCond.unpure.get, cpsBody.transformed)
         )
         CpsTree.impure(term, owner, nTree, ik)
       case (AsyncKind.Async(ik), AsyncKind.Sync) =>
         val helperMethod = Symbols.requiredMethod("cps.runtime.WhileHelper.w10")
         val nTree = Apply(
           TypeApply(ref(helperMethod), List(TypeTree(tctx.monadType))),
-          List(tctx.cpsMonadRef, cpsCond.transformed, term.body)
+          List(tctx.cpsMonadRef, cpsCond.transformed, cpsBody.unpure.get)
         )
         CpsTree.impure(term, owner, nTree, ik)
       case (AsyncKind.Async(ik1), AsyncKind.Async(ik2)) =>

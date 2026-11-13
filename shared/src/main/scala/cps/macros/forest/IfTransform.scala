@@ -23,6 +23,10 @@ object IfTransform:
     val fR = Async.nestTransform(ifFalse, cpsCtx)
     var isAsync = true
 
+    // a sync part can be changed (e.g. contains an unshifted lambda): then the changed tree should be used
+    def syncPart[A](r: CpsExpr[F, A], origin: Expr[A]): Expr[A] =
+      if (r.isChanged) r.syncOrigin.get else origin
+
     val cnBuild = {
       if (!cR.isAsync) then
         if (!tR.isAsync && !fR.isAsync) then
@@ -43,7 +47,7 @@ object IfTransform:
           CpsExpr.async[F, T](
             monad,
             '{
-              if ($cond)
+              if (${ syncPart(cR, cond) })
                 ${ tR.transformed }
               else
                 ${ fR.transformed }
@@ -59,9 +63,9 @@ object IfTransform:
                 ${ condAsyncExpr() }
               )(c =>
                 if (c) {
-                  ${ ifTrue }
+                  ${ syncPart(tR, ifTrue) }
                 } else {
-                  ${ ifFalse }
+                  ${ syncPart(fR, ifFalse) }
                 }
               )
             }
