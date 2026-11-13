@@ -106,7 +106,9 @@ object PoorManEffect {
     override def checkSubmitted[T](submitId: Long): Option[Try[T]] = {
       waiters.get(submitId).flatMap { v =>
         if (v.isDone) {
-          Some(Try(v.get().asInstanceOf[T]))
+          // get() wraps the failure into ExecutionException
+          try Some(Success(v.get().asInstanceOf[T]))
+          catch case ex: ExecutionException => Some(Failure(ex.getCause()))
         } else {
           None
         }
@@ -272,7 +274,11 @@ class PoorManEffectRuntimeAwait(rt: PoorManEffect.RunAPI) extends CpsRuntimeAwai
             case _: TimeoutException =>
               if (!rt.isActive) rt.activate()
         }
-        if (retval == null) cf.get().asInstanceOf[A]
+        // cf can be already completed before the loop (then retval is not set): get() wraps the failure into
+        // ExecutionException, unwrap it as in the loop.
+        if (retval == null)
+          try cf.get().asInstanceOf[A]
+          catch case ex: ExecutionException => throw ex.getCause()
         else retval.asInstanceOf[A]
       } finally rt.forgetSubmitted(id)
     }
