@@ -287,10 +287,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
             if (cpsBody.isChanged) then
               val methodKind =
                 if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
-              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
-              val nBody = if (isPartialFunction) then asMatch(syncBody) else syncBody
-              val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
-              if (isPartialFunction) then withClosureType(lambda, term.tpe.widen) else lambda
+              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(syncBody.tpe.widen))
+              rebuildLambda(mt, params, syncBody)
             else term
           case None =>
             if (existsLambdaUnshift) then
@@ -299,15 +297,14 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                   throw MacroError(s"Can't unshift lambda with Nothing type: ${body.tpe.widen.show}", posExpr(term))
                 case '[F[r]] if body.tpe.widen <:< TypeRepr.of[F[r]] =>
                   def flatten(t: Term): Term =
-                    '{ ${ cpsCtx.monad }.flatMap(${ t.asExprOf[F[F[r]]] })((x: F[r]) => x) }.asTerm
-                  // for a partial function each case is flattened, so the match stays on top
+                    '{ ${ cpsCtx.monad }.flatten(${ t.asExprOf[F[F[r]]] }) }.asTerm
+                  // for a partial function with a match body each case is flattened, so the match stays on top
                   // (https://github.com/dotty-cps-async/dotty-cps-async/issues/157)
-                  val nBody =
-                    if (isPartialFunction) then mapCases(asMatch(cpsBody.transformed), flatten)
-                    else flatten(cpsBody.transformed)
-                  val mt = MethodType(paramNames)(_ => paramTypes, _ => body.tpe.widen)
-                  val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
-                  if (isPartialFunction) then withClosureType(lambda, term.tpe.widen) else lambda
+                  val nBody = cpsBody.transformed match
+                    case m: Match if isPartialFunction => mapCases(m, flatten)
+                    case other                         => flatten(other)
+                  val mt = MethodType(paramNames)(_ => paramTypes, _ => lambdaResultType(body.tpe.widen))
+                  rebuildLambda(mt, params, nBody)
                 case _ =>
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
             else throw MacroError(s"Internal error: unshift is called when it not exists", term.asExpr)
@@ -320,11 +317,26 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           throw MacroError(s"Lambda expexted, we have ${term.asExpr.show}", term.asExpr)
 
     /** A partial function literal is a closure with the partial function type: ExpandSAMs builds `isDefinedAt` and `applyOrElse`
-      * from the cases of the match in the closure body. So a rebuilt partial function keeps the match on top of the body and
-      * the closure type.
+      * from the cases of the match in the closure body (a body which is not a match is wrapped into `case _ =>`). So a rebuilt
+      * partial function keeps the match on top of the body and the closure type.
       */
-    private def isPartialFunction: Boolean =
+    private lazy val isPartialFunction: Boolean =
       term.tpe.widen.derivesFrom(partialFunctionType.typeSymbol)
+
+    /** Result type of the rebuilt lambda: for a partial function its result type argument (as typer does), so that it agrees
+      * with the closure type.
+      */
+    private def lambdaResultType(bodyType: TypeRepr): TypeRepr =
+      if (isPartialFunction) then
+        term.tpe.widen.baseType(partialFunctionType.typeSymbol) match
+          case AppliedType(_, List(_, res)) => res
+          case _                            => bodyType
+      else bodyType
+
+    /** Lambda with the parameters of the original one and the new body; a partial function keeps its closure type. */
+    private def rebuildLambda(mt: MethodType, params: List[ValDef], nBody: Term): Term =
+      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      if (isPartialFunction) then withClosureType(lambda, term.tpe.widen) else lambda
 
     private def asMatch(body: Term): Match =
       body match

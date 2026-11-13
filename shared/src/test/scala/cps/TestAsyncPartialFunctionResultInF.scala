@@ -1,6 +1,6 @@
 package cps
 
-import org.junit.{Test, Ignore}
+import org.junit.Test
 import org.junit.Assert.*
 
 import scala.concurrent.*
@@ -31,6 +31,27 @@ class TestAsyncPartialFunctionResultInF {
       val r = List[Any](1, "a", 2).collect { case x: Int => { val y = await(g(x)); Future.successful(y + 1) } }
       val values = await(Future.sequence(r))
       assert(values == List(11, 21), s"values=$values")
+    }
+    FutureCompleter(c)
+  }
+
+  // a function literal where a partial function is expected: the partial function is defined everywhere
+  @Test def testCollectWithFunctionLiteral(): Unit = {
+    val c = async[Future] {
+      val r = List(1, 2).collect(x => { val y = await(g(x)); Future.successful(y) })
+      val values = await(Future.sequence(r))
+      assert(values == List(10, 20), s"values=$values")
+    }
+    FutureCompleter(c)
+  }
+
+  // the case is changed (the inner lambda is unshifted), but stays sync
+  @Test def testCollectWithChangedSyncCase(): Unit = {
+    val c = async[Future] {
+      val r = List(1, 2).collect { case x if x > 1 => List(x).map(y => { await(g(y)); Future.successful(y) }) }
+      val values = await(Future.sequence(r.flatten))
+      // the inner lambda returns `Future.successful(y)`, after awaiting `g(y)`
+      assert(values == List(2), s"values=$values")
     }
     FutureCompleter(c)
   }

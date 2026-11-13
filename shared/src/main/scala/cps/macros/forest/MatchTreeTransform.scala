@@ -45,7 +45,7 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     if (!cpsScrutinee.isAsync) then
       if (!asyncCases) then
         if (!changedCases) then CpsTree.pure(owner, matchTerm)
-        else CpsTree.pure(owner, Match.copy(matchTerm)(scrutinee, nCases))
+        else CpsTree.pure(owner, Match.copy(matchTerm)(scrutinee, nCases), isChanged = true)
       else
         val nTree = Match.copy(matchTerm)(scrutinee, nCases)
         CpsTree.impure(owner, nTree, otpe)
