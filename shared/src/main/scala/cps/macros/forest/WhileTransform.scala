@@ -49,7 +49,7 @@ object WhileTransform:
           CpsExpr.async[F, Unit](
             monad,
             '{
-              cps.runtime.WhileHelper.w01(${ monad }, ${ cond }, ${ cpsRepeat.transformed })
+              cps.runtime.WhileHelper.w01(${ monad }, ${ cpsCond.syncOriginOr(cond) }, ${ cpsRepeat.transformed })
             }
           )
       else // (cpsCond.isAsync)
@@ -74,7 +74,7 @@ object WhileTransform:
         CpsExpr.async[F, Unit](
           monad,
           '{
-            cps.runtime.WhileHelper.w10(${ monad }, ${ cpsCond.transformed }, ${ repeat })
+            cps.runtime.WhileHelper.w10(${ monad }, ${ cpsCond.transformed }, ${ cpsRepeat.syncOriginOr(repeat) })
           }
         )
       } else {

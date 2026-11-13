@@ -43,7 +43,7 @@ object IfTransform:
           CpsExpr.async[F, T](
             monad,
             '{
-              if ($cond)
+              if (${ cR.syncOriginOr(cond) })
                 ${ tR.transformed }
               else
                 ${ fR.transformed }
@@ -59,9 +59,9 @@ object IfTransform:
                 ${ condAsyncExpr() }
               )(c =>
                 if (c) {
-                  ${ ifTrue }
+                  ${ tR.syncOriginOr(ifTrue) }
                 } else {
-                  ${ ifFalse }
+                  ${ fR.syncOriginOr(ifFalse) }
                 }
               )
             }
