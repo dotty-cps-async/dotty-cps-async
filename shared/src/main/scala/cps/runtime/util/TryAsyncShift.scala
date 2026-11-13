@@ -48,8 +48,10 @@ class TryAsyncShift[T] extends AsyncShift[Try[T]]:
     o match
       case Success(t)  => m.pure(Success(t))
       case Failure(ex) =>
-        if pf.isDefinedAt(ex) then m.map(pf(ex))(u => Success(u))
-        else m.pure(Failure(ex))
+        // lift uses applyOrElse: the guards and extractors of pf are evaluated once
+        pf.lift(ex) match
+          case Some(fu) => m.map(fu)(u => Success(u))
+          case None     => m.pure(Failure(ex))
 
   def recoverWith[F[_], U >: T](o: Try[T], m: CpsMonad[F])(pf: PartialFunction[Throwable, F[Try[U]]]): F[Try[U]] =
     o match

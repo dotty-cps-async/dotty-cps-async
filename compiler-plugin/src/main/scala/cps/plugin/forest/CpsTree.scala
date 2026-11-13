@@ -785,9 +785,28 @@ case class LambdaCpsTree(
     } else {
       NoType
     }
+    // ExpandSAMs builds `isDefinedAt` and `applyOrElse` of a partial function from the cases of the match in the closure
+    // body, so for a sync body (`pure(x match ...)`) `pure` is applied in each case.
+    val closureBody =
+      if (newClosureType.exists && newClosureType <:< defn.PartialFunctionOf(WildcardType, WildcardType)) then
+        (cpsBody.asyncKind, cpsBody.unpure) match
+          case (AsyncKind.Sync, Some(m: Match)) =>
+            val resType = cpsBody.originType.widen
+            cpy.Match(m)(
+              m.selector,
+              m.cases.map { cd =>
+                cpy.CaseDef(cd)(body =
+                  Apply(TypeApply(Select(tctx.cpsMonadRef, "pure".toTermName), List(TypeTree(resType))), List(cd.body))
+                    .withSpan(cd.body.span)
+                    .withType(cpsBody.transformedType)
+                )
+              }
+            )
+          case _ => cpsBody.transformed
+      else cpsBody.transformed
     Closure(
       meth,
-      { tss => TransformUtil.substParams(cpsBody.transformed, originParams, tss.head).changeOwner(cpsBody.owner, meth) },
+      { tss => TransformUtil.substParams(closureBody, originParams, tss.head).changeOwner(cpsBody.owner, meth) },
       Nil,
       newClosureType
     )

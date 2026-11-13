@@ -1,13 +1,11 @@
 package cps.macros.forest.application
 
-import scala.annotation.tailrec
 import scala.quoted.*
 import scala.collection.immutable.Queue
 import cps.*
 import cps.macros.*
 import cps.macros.common.*
 import cps.macros.forest.*
-import cps.macros.forest.application.ApplicationShiftType.{CPS_RUNTIME_AWAIT, CPS_DEFERR_TO_PLUGIN}
 import cps.macros.misc.*
 
 trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
@@ -349,11 +347,11 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
               case tIn :: tOut :: Nil => (tIn, tOut)
               case _ =>
                 throw MacroError(s"PartialFunction should have 2 type parameters, we have $tparams", term.asExpr)
-            val matchTerm = body match
-              case m @ Match(_, _) => m
+            body match
+              case Match(_, _) =>
               case _ =>
                 throw MacroError(s"PartialFunction should be represented as Match term, we have $body", posExprs(body, term))
-            createAsyncPartialFunction(tIn, tOut, matchTerm, params, shiftType)
+            createAsyncPartialFunction(tIn, tOut, params, shiftType)
           } else {
             throw MacroError(s"FunctionType expected, we have ${tp}", term.asExpr)
           }
@@ -378,100 +376,62 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       report.warning("lambda in statement position", term.pos)
       BlockCpsTree(owner, Queue(term), a.changeOwner(owner))
 
+    /** The async partial function is built as a closure with the partial function type and the transformed match as body, as
+      * typer does for a partial function literal: ExpandSAMs then builds `isDefinedAt` and `applyOrElse` from the cases, so the
+      * guards and the extractors are evaluated once in `applyOrElse` (used by `lift` and `collect`), and the default case is
+      * added (https://github.com/dotty-cps-async/dotty-cps-async/issues/155).
+      */
     private def createAsyncPartialFunction(
         from: TypeRepr,
         to: TypeRepr,
-        body: Match,
         params: List[ValDef],
         shiftType: ApplicationShiftType
     ): Term =
-      val toInF = TypeRepr.of[F].appliedTo(List(to))
-      val fromType = from
-      val matchVar = body.scrutinee
-      val paramNames = params.map(_.name)
-
       if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"createAsyncPartialFunction: from = $from, to=$to")
 
-      def newCheckBody(inputVal: Term): Term =
+      def asMatch(body: Term): Match =
+        body match
+          case m: Match => m
+          case other =>
+            throw MacroError(s"assumed that the body of partial function is Match, we have $other", posExprs(term))
 
-        val casePattern = '{
-          ${ inputVal.asExpr } match
-            case _ => false
-        }.asTerm
+      def mapCases(m: Match, f: Term => Term): Match =
+        Match.copy(m)(m.scrutinee, m.cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, f(cd.rhs))))
 
-        @tailrec
-        def transformCases(rest: List[CaseDef], acc: List[CaseDef], wasDefault: Boolean): List[CaseDef] =
-          rest match
-            case h :: t =>
-              val nh = rebindCaseDef(h, Literal(BooleanConstant(true)), Map.empty, false, Symbol.spliceOwner)
-              transformCases(t, nh :: acc, wasDefault)
-            case Nil =>
-              val lastCase = casePattern match
-                case Inlined(_, List(), Match(x, cases)) => cases.head
-                case Match(x, cases)                     => cases.head
-                case _ =>
-                  throw MacroError(
-                    "Internal error: case pattern should be Inlined(_,_,Match) pr Match, we have $casePattern",
-                    posExpr(term)
-                  )
-              ;
-              (lastCase :: acc).reverse
+      def pureCase(rhs: Term): Term =
+        Apply(TypeApply(Select.unique(cpsCtx.monad.asTerm, "pure"), List(Inferred(to))), List(rhs))
 
-        Match.copy(body)(inputVal, transformCases(body.cases, Nil, false))
-        // Match(inputVal, transformCases(body.cases,Nil,false))
+      // the case is `F[r]`, where `r` is the (widened) type of the match, which conforms to `to`
+      def awaitCase(runtimeAwait: Term)(rhs: Term): Term =
+        rhs.tpe.widen.asType match
+          case '[F[r]] if rhs.tpe.widen <:< TypeRepr.of[F[r]] => applyRuntimeAwait(runtimeAwait, rhs, TypeRepr.of[r])
+          case _ => throw MacroError(s"F[?] expected, we have ${rhs.tpe.widen.show}", posExprs(term))
 
-      def termCast[E: Type](term: Term): Expr[E] =
-        term.asExprOf[E]
-
-      // `apply` has no default case: for a partial function literal the compiler adds it (in ExpandSAMs), so here the
-      // selector is `@unchecked`, otherwise a case with a guard gives "match may not be exhaustive".
-      // built directly: a quoted `'{ new scala.unchecked() }` comes wrapped in Inlined
-      val uncheckedAnnotation =
-        New(TypeTree.of[scala.unchecked]).select(TypeRepr.of[scala.unchecked].typeSymbol.primaryConstructor).appliedToNone
-
-      val r = fromType.asType match
-        case '[ftt] =>
-          toInF.asType match
-            case '[ttt] =>
-              ('{
-                new PartialFunction[ftt, ttt] {
-                  override def isDefinedAt(x1: ftt): Boolean =
-                    ${ newCheckBody('x1.asTerm).asExprOf[Boolean] }
-                  override def apply(x2: ftt): ttt =
-                    ${
-                      val nBody = cpsBody.transformed
-                      nBody match
-                        case m @ Match(scr, caseDefs) =>
-                          val b0 = Map(matchVar.symbol -> 'x2.asTerm)
-                          val nCaseDefs = caseDefs.map(cd => rebindCaseDef(cd, cd.rhs, b0, true, Symbol.spliceOwner))
-                          val selector = TransformUtil.withUncheckedAnnotations(using qctx)('x2.asTerm, List(uncheckedAnnotation))
-                          val nTerm = Match(selector, nCaseDefs)
-                          shiftType match
-                            case ApplicationShiftType.CPS_ONLY =>
-                              termCast[ttt](nTerm)
-                            case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
-                              optRuntimeAwait match
-                                case Some(runtimeAwait) =>
-                                  applyRuntimeAwait(runtimeAwait, nTerm, TypeRepr.of[ttt]).asExprOf[ttt]
-                                case None =>
-                                  throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
-                            case CPS_DEFERR_TO_PLUGIN =>
-                              // it should be the same.
-                              termCast[ttt](nTerm)
-                        case _ =>
-                          throw MacroError(
-                            s"assumed that transformed match is Match, we have $nBody",
-                            posExprs(term)
-                          )
-                    }
-                }
-              }).asTerm
-            case _ =>
-              throw MacroError("Can't skolemize $toInF", posExprs(term))
-        case _ =>
-          throw MacroError("Can't skolemize $fromType", posExprs(term))
-
-      r
+      // The body can be sync, when the partial function is shifted because of other arguments.
+      // With CPS_RUNTIME_AWAIT the partial function keeps its type, and the result of each async case is awaited.
+      val (resType, nMatch) = shiftType match
+        case ApplicationShiftType.CPS_ONLY =>
+          val toInF = TypeRepr.of[F].appliedTo(List(to))
+          cpsBody.syncOrigin match
+            case Some(syncBody) => (toInF, mapCases(asMatch(syncBody), pureCase))
+            case None           => (toInF, asMatch(cpsBody.transformed))
+        case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
+          cpsBody.syncOrigin match
+            case Some(syncBody) => (to, asMatch(syncBody))
+            case None =>
+              optRuntimeAwait match
+                case Some(runtimeAwait) => (to, mapCases(asMatch(cpsBody.transformed), awaitCase(runtimeAwait)))
+                case None =>
+                  throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
+        case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
+          throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
+      val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
+      val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
+      lambda match
+        case Block(List(ddef: DefDef), closure @ Closure(meth, _)) =>
+          Block.copy(lambda)(List(ddef), Closure.copy(closure)(meth, Some(partialFunctionType.appliedTo(List(from, resType)))))
+        case other =>
+          throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", posExprs(term))
 
     private def createAsyncLambda(mt: MethodType, params: List[ValDef], shiftType: ApplicationShiftType, owner: Symbol): Term =
       val transformedBody = cpsBody.transformed
@@ -486,39 +446,6 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncLambda ", term.asExpr)
       Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
-
-    private def rebindCaseDef(
-        caseDef: CaseDef,
-        body: Term,
-        assoc: Map[Symbol, Term],
-        processBody: Boolean,
-        owner: Symbol
-    ): CaseDef = {
-
-      // The case is copied into `isDefinedAt` and `apply`, so all binds of the pattern (also under extractors, type tests and
-      // named arguments) receive new symbols, and the guard and the body are changed to use them.
-      // The new bind receives the name as a String, so a derived name (as `$1$`) becomes a simple name: the quotes API has no
-      // way to create a derived name.
-      var newBindings = assoc
-      val rebinder = new PatternAwareTreeMap {
-        override def transformPattern(pattern: Tree)(owner: Symbol): Tree =
-          pattern match
-            case bd @ Bind(name, pat1) =>
-              //  -Xcheck-macro complain that bd.symbol.flags are invalid
-              val nBSym = Symbol.newBind(owner, name, Flags.Case, Ref(bd.symbol).tpe.widen)
-              newBindings = newBindings.updated(bd.symbol, Ref(nBSym))
-              Bind(nBSym, transformPattern(pat1)(owner))
-            case _ =>
-              super.transformPattern(pattern)(owner)
-      }
-
-      val nPattern = rebinder.transformPattern(caseDef.pattern)(owner)
-      // changeOwner also gives new symbols to the definitions inside the guard (lambdas, binds of a nested match), which are
-      // owned by the original lambda, so each copy of the guard has its own.
-      val nGuard = caseDef.guard.map(g => TransformUtil.changeSymsInTerm(newBindings, g, owner).changeOwner(owner))
-      val nBody = if (processBody) TransformUtil.changeSymsInTerm(newBindings, body, owner) else body
-      CaseDef(nPattern, nGuard, nBody)
-    }
 
     private def changeArgs(params: List[ValDef], nParams: List[Tree], body: Term, owner: Symbol): Term =
       TransformUtil.substituteLambdaParams(params, nParams, body, owner)
