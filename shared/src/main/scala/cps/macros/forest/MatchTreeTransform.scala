@@ -43,11 +43,13 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       matchTerm.cases
     }
     if (!cpsScrutinee.isAsync) then
+      // the scrutinee can be changed, but stay sync (as the cases)
+      val nScrutinee = if (cpsScrutinee.isChanged) cpsScrutinee.syncOrigin.getOrElse(scrutinee) else scrutinee
       if (!asyncCases) then
-        if (!changedCases) then CpsTree.pure(owner, matchTerm)
-        else CpsTree.pure(owner, Match.copy(matchTerm)(scrutinee, nCases), isChanged = true)
+        if (!changedCases && !cpsScrutinee.isChanged) then CpsTree.pure(owner, matchTerm)
+        else CpsTree.pure(owner, Match.copy(matchTerm)(nScrutinee, nCases), isChanged = true)
       else
-        val nTree = Match.copy(matchTerm)(scrutinee, nCases)
+        val nTree = Match.copy(matchTerm)(nScrutinee, nCases)
         CpsTree.impure(owner, nTree, otpe)
     else
       val uncheckedAnnotations = TransformUtil.exhaustivityUncheckedAnnotations(scrutinee.tpe)

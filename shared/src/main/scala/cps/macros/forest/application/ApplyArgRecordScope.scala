@@ -282,11 +282,11 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         val (params, body) = extractParamsAndBody()
         val paramNames = params.map(_.name)
         val paramTypes = params.map(_.tpt.tpe)
+        val methodKind =
+          if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
         cpsBody.syncOrigin match
           case Some(syncBody) =>
             if (cpsBody.isChanged) then
-              val methodKind =
-                if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
               val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(syncBody.tpe.widen))
               rebuildLambda(mt, params, syncBody)
             else term
@@ -300,10 +300,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                     '{ ${ cpsCtx.monad }.flatten(${ t.asExprOf[F[F[r]]] }) }.asTerm
                   // for a partial function with a match body each case is flattened, so the match stays on top
                   // (https://github.com/dotty-cps-async/dotty-cps-async/issues/157)
-                  val nBody = cpsBody.transformed match
-                    case m: Match if isPartialFunction => mapCases(m, flatten)
-                    case other                         => flatten(other)
-                  val mt = MethodType(paramNames)(_ => paramTypes, _ => lambdaResultType(body.tpe.widen))
+                  val nBody = topMatch(cpsBody.transformed) match
+                    case Some(m) if isPartialFunction => mapCases(m, flatten)
+                    case _                            => flatten(cpsBody.transformed)
+                  val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(body.tpe.widen))
                   rebuildLambda(mt, params, nBody)
                 case _ =>
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
@@ -323,37 +323,39 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     private lazy val isPartialFunction: Boolean =
       term.tpe.widen.derivesFrom(partialFunctionType.typeSymbol)
 
-    /** Result type of the rebuilt lambda: for a partial function its result type argument (as typer does), so that it agrees
-      * with the closure type.
+    /** The closure type of the original lambda (a SAM type, also a partial function) with the result type of its method. */
+    private lazy val originClosureType: Option[(TypeRepr, TypeRepr)] = TransformUtil.lambdaClosureType(term)
+
+    /** Result type of the rebuilt lambda: for a SAM type (also a partial function) the result type of the original method, so
+      * that it agrees with the closure type.
       */
     private def lambdaResultType(bodyType: TypeRepr): TypeRepr =
-      if (isPartialFunction) then
-        term.tpe.widen.baseType(partialFunctionType.typeSymbol) match
-          case AppliedType(_, List(_, res)) => res
-          case _                            => bodyType
-      else bodyType
+      originClosureType.map(_._2).getOrElse(bodyType)
 
-    /** Lambda with the parameters of the original one and the new body; a partial function keeps its closure type. */
+    /** Lambda with the parameters of the original one and the new body; a SAM type (also a partial function) keeps the closure
+      * type.
+      */
     private def rebuildLambda(mt: MethodType, params: List[ValDef], nBody: Term): Term =
       val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
-      if (isPartialFunction) then withClosureType(lambda, term.tpe.widen) else lambda
+      originClosureType match
+        case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)
+        case None           => lambda
+
+    /** The match on top of the body, also through trivial wrappers. */
+    private def topMatch(body: Term): Option[Match] =
+      body match
+        case m: Match               => Some(m)
+        case Inlined(_, Nil, inner) => topMatch(inner)
+        case Block(Nil, inner)      => topMatch(inner)
+        case _                      => None
 
     private def asMatch(body: Term): Match =
-      body match
-        case m: Match => m
-        case other =>
-          throw MacroError(s"assumed that the body of partial function is Match, we have $other", posExprs(term))
+      topMatch(body).getOrElse(
+        throw MacroError(s"assumed that the body of partial function is Match, we have $body", posExprs(term))
+      )
 
     private def mapCases(m: Match, f: Term => Term): Match =
       Match.copy(m)(m.scrutinee, m.cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, f(cd.rhs))))
-
-    /** Set the closure type of a lambda, built by `Lambda(...)` as `Block(List(DefDef), Closure)`. */
-    private def withClosureType(lambda: Term, tpe: TypeRepr): Term =
-      lambda match
-        case Block(List(ddef: DefDef), closure @ Closure(meth, _)) =>
-          Block.copy(lambda)(List(ddef), Closure.copy(closure)(meth, Some(tpe)))
-        case other =>
-          throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", posExprs(term))
 
     def shiftedArgExpr(
         existsAsync: Boolean,
@@ -459,7 +461,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
       val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
       val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
-      withClosureType(lambda, partialFunctionType.appliedTo(List(from, resType)))
+      TransformUtil.withClosureType(lambda, partialFunctionType.appliedTo(List(from, resType)))
 
     private def createAsyncLambda(mt: MethodType, params: List[ValDef], shiftType: ApplicationShiftType, owner: Symbol): Term =
       val transformedBody = cpsBody.transformed
