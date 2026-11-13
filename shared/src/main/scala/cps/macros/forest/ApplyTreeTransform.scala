@@ -114,10 +114,11 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                 Apply.copy(applyTerm)(
                   Select(xx, fun.symbol),
                   List(yy)
-                )
+                ),
+                isChanged = true
               )
           case (Some(xx), None) =>
-            val (xOp, xCnt) = shortcutOpConst(x)
+            val (xOp, xCnt) = shortcutOpConst(xx)
             val expr = genShortcutIf(xOp.asExprOf[Boolean], xCnt, yCpsTree.transformed.asExprOf[F[Boolean]])
             CpsTree.impure(owner, expr.asTerm, TypeRepr.of[Boolean])
           case (None, Some(yy)) =>

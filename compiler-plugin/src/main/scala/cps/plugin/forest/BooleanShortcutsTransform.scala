@@ -33,7 +33,7 @@ object BooleanShortcutsTransform {
         else
           val nTerm =
             if (xCps.isOriginEqSync) then cpy.Apply(term)(term.fun, List(yCps.unpure.get))
-            else if (yCps.isOriginEqSync) then cpy.Apply(term)(Select(obj, methodSymbol.name.toTermName), term.args)
+            else if (yCps.isOriginEqSync) then cpy.Apply(term)(Select(xCps.unpure.get, methodSymbol.name.toTermName), term.args)
             else cpy.Apply(term)(Select(xCps.unpure.get, methodSymbol.name.toTermName), List(yCps.unpure.get))
           CpsTree.pure(term, owner, nTerm)
       case (AsyncKind.Sync, AsyncKind.Async(internalKind)) =>
