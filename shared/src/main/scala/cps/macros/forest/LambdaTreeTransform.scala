@@ -35,12 +35,18 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       val changedBody = cpsBody.syncOrigin.get
       // keep context function as context function (async block is a context lambda, see TransformUtil.contextLambdaAsFunction)
       val methodKind = if (lambdaTerm.tpe.isContextFunctionType) MethodTypeKind.Contextual else MethodTypeKind.Plain
-      val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => changedBody.tpe.widen)
-      val newLambda = Lambda(
+      // a SAM type (also a partial function) keeps the closure type and the result type of its method
+      val closureType = TransformUtil.lambdaClosureType(lambdaTerm)
+      val resultType = closureType.map(_._2).getOrElse(changedBody.tpe.widen)
+      val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => resultType)
+      val lambda = Lambda(
         owner,
         mt,
         (owner, args) => TransformUtil.substituteLambdaParams(params, args, changedBody, owner).changeOwner(owner)
       )
+      val newLambda = closureType match
+        case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)
+        case None           => lambda
       CpsTree.pure(owner, newLambda, true)
     } else {
       CpsTree.pure(owner, lambdaTerm)

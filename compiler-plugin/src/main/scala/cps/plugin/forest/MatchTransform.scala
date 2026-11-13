@@ -24,7 +24,9 @@ object MatchTransform {
         Log.trace("MathTransform, casesPrepared: " + casesPrepared.map(_.show).mkString("\n"), nesting)
         val retval = selectorCps.asyncKind match
           case AsyncKind.Sync =>
-            if (casesAsyncKind == AsyncKind.Sync && casesCps.unchanged) then CpsTree.unchangedPure(term, owner)
+            // the selector can be changed (e.g. contains an unshifted lambda), but stay sync
+            if (casesAsyncKind == AsyncKind.Sync && casesCps.unchanged && selectorCps.isOriginEqSync) then
+              CpsTree.unchangedPure(term, owner)
             else
               val selectorPrepared = selectorCps.unpure.get
               val res = Match(selectorPrepared, casesPrepared).withSpan(term.span)

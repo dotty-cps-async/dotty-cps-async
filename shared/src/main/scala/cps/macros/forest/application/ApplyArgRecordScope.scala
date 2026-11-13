@@ -282,13 +282,13 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         val (params, body) = extractParamsAndBody()
         val paramNames = params.map(_.name)
         val paramTypes = params.map(_.tpt.tpe)
+        val methodKind =
+          if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
         cpsBody.syncOrigin match
           case Some(syncBody) =>
             if (cpsBody.isChanged) then
-              val methodKind =
-                if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
-              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => syncBody.tpe.widen)
-              Lambda(owner, mt, (owner, args) => changeArgs(params, args, syncBody, owner).changeOwner(owner))
+              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(syncBody.tpe.widen))
+              rebuildLambda(mt, params, syncBody)
             else term
           case None =>
             if (existsLambdaUnshift) then
@@ -296,13 +296,15 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                 case '[Nothing] =>
                   throw MacroError(s"Can't unshift lambda with Nothing type: ${body.tpe.widen.show}", posExpr(term))
                 case '[F[r]] if body.tpe.widen <:< TypeRepr.of[F[r]] =>
-                  val nBody = '{
-                    ${ cpsCtx.monad }.flatMap(${
-                      cpsBody.transformed.asExprOf[F[F[r]]]
-                    })((x: F[r]) => x)
-                  }.asTerm
-                  val mt = MethodType(paramNames)(_ => paramTypes, _ => body.tpe.widen)
-                  Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+                  def flatten(t: Term): Term =
+                    '{ ${ cpsCtx.monad }.flatten(${ t.asExprOf[F[F[r]]] }) }.asTerm
+                  // for a partial function with a match body each case is flattened, so the match stays on top
+                  // (https://github.com/dotty-cps-async/dotty-cps-async/issues/157)
+                  val nBody = topMatch(cpsBody.transformed) match
+                    case Some(m) if isPartialFunction => mapCases(m, flatten)
+                    case _                            => flatten(cpsBody.transformed)
+                  val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(body.tpe.widen))
+                  rebuildLambda(mt, params, nBody)
                 case _ =>
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
             else throw MacroError(s"Internal error: unshift is called when it not exists", term.asExpr)
@@ -313,6 +315,47 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case Lambda(params, body) => (params, body)
         case _ =>
           throw MacroError(s"Lambda expexted, we have ${term.asExpr.show}", term.asExpr)
+
+    /** A partial function literal is a closure with the partial function type: ExpandSAMs builds `isDefinedAt` and `applyOrElse`
+      * from the cases of the match in the closure body (a body which is not a match is wrapped into `case _ =>`). So a rebuilt
+      * partial function keeps the match on top of the body and the closure type.
+      */
+    private lazy val isPartialFunction: Boolean =
+      term.tpe.widen.derivesFrom(partialFunctionType.typeSymbol)
+
+    /** The closure type of the original lambda (a SAM type, also a partial function) with the result type of its method. */
+    private lazy val originClosureType: Option[(TypeRepr, TypeRepr)] = TransformUtil.lambdaClosureType(term)
+
+    /** Result type of the rebuilt lambda: for a SAM type (also a partial function) the result type of the original method, so
+      * that it agrees with the closure type.
+      */
+    private def lambdaResultType(bodyType: TypeRepr): TypeRepr =
+      originClosureType.map(_._2).getOrElse(bodyType)
+
+    /** Lambda with the parameters of the original one and the new body; a SAM type (also a partial function) keeps the closure
+      * type.
+      */
+    private def rebuildLambda(mt: MethodType, params: List[ValDef], nBody: Term): Term =
+      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      originClosureType match
+        case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)
+        case None           => lambda
+
+    /** The match on top of the body, also through trivial wrappers. */
+    private def topMatch(body: Term): Option[Match] =
+      body match
+        case m: Match               => Some(m)
+        case Inlined(_, Nil, inner) => topMatch(inner)
+        case Block(Nil, inner)      => topMatch(inner)
+        case _                      => None
+
+    private def asMatch(body: Term): Match =
+      topMatch(body).getOrElse(
+        throw MacroError(s"assumed that the body of partial function is Match, we have $body", posExprs(term))
+      )
+
+    private def mapCases(m: Match, f: Term => Term): Match =
+      Match.copy(m)(m.scrutinee, m.cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, f(cd.rhs))))
 
     def shiftedArgExpr(
         existsAsync: Boolean,
@@ -389,15 +432,6 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     ): Term =
       if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"createAsyncPartialFunction: from = $from, to=$to")
 
-      def asMatch(body: Term): Match =
-        body match
-          case m: Match => m
-          case other =>
-            throw MacroError(s"assumed that the body of partial function is Match, we have $other", posExprs(term))
-
-      def mapCases(m: Match, f: Term => Term): Match =
-        Match.copy(m)(m.scrutinee, m.cases.map(cd => CaseDef.copy(cd)(cd.pattern, cd.guard, f(cd.rhs))))
-
       def pureCase(rhs: Term): Term =
         Apply(TypeApply(Select.unique(cpsCtx.monad.asTerm, "pure"), List(Inferred(to))), List(rhs))
 
@@ -427,11 +461,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
       val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
       val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
-      lambda match
-        case Block(List(ddef: DefDef), closure @ Closure(meth, _)) =>
-          Block.copy(lambda)(List(ddef), Closure.copy(closure)(meth, Some(partialFunctionType.appliedTo(List(from, resType)))))
-        case other =>
-          throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", posExprs(term))
+      TransformUtil.withClosureType(lambda, partialFunctionType.appliedTo(List(from, resType)))
 
     private def createAsyncLambda(mt: MethodType, params: List[ValDef], shiftType: ApplicationShiftType, owner: Symbol): Term =
       val transformedBody = cpsBody.transformed

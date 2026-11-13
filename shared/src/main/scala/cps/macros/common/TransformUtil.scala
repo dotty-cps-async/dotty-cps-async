@@ -184,6 +184,27 @@ object TransformUtil:
     }
     argTransformer.transformTree(body)(owner)
 
+  /** The closure type of a lambda `Block(List(DefDef), Closure(meth, tpt))`, defined for a SAM type (also for a partial
+    * function), with the result type of its method. A rebuilt lambda should keep them: `Lambda(...)` builds a function closure,
+    * and for a partial function ExpandSAMs builds `isDefinedAt` and `applyOrElse` from the closure type and the cases.
+    */
+  def lambdaClosureType(using Quotes)(lambda: quotes.reflect.Term): Option[(quotes.reflect.TypeRepr, quotes.reflect.TypeRepr)] =
+    import quotes.reflect._
+    lambda match
+      case Block(List(ddef: DefDef), Closure(_, Some(tpe))) if !tpe.isFunctionType && !tpe.isContextFunctionType =>
+        Some((tpe, ddef.returnTpt.tpe))
+      case Inlined(_, Nil, inner) => lambdaClosureType(inner)
+      case _                      => None
+
+  /** Set the closure type of a lambda, built by `Lambda(...)` as `Block(List(DefDef), Closure)`. */
+  def withClosureType(using Quotes)(lambda: quotes.reflect.Term, tpe: quotes.reflect.TypeRepr): quotes.reflect.Term =
+    import quotes.reflect._
+    lambda match
+      case Block(List(ddef: DefDef), closure @ Closure(meth, _)) =>
+        Block.copy(lambda)(List(ddef), Closure.copy(closure)(meth, Some(tpe)))
+      case other =>
+        throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", lambda.asExpr)
+
   /** widen, which works over 'or' and 'and' types. (bug in dotty?)
     */
   def veryWiden(using qctx: Quotes)(tp: qctx.reflect.TypeRepr): qctx.reflect.TypeRepr =
