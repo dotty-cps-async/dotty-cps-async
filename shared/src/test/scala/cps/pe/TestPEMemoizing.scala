@@ -33,7 +33,7 @@ class TestPEMemoizing:
      }
      FutureCompleter(future)
 
-  @Test def test2ValsInBlock(): Unit = 
+  @Test def test2ValsInBlock() = 
      var ref = 0
      val effect = PureEffect.delay[Int]({ ref = ref+1; ref})
      val c = async[PureEffect]{

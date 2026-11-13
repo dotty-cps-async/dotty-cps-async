@@ -143,7 +143,7 @@ class TestAsyncIteratorOps {
     }
 
 
-    @Test def testFoldAsync(): Unit = {
+    @Test def testFoldAsync() = {
       val stream = AsyncList.iterate[Future,Int](1 to 3)
       val iterator = stream.iterator
       val f = async[Future]{

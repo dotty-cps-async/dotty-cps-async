@@ -168,7 +168,7 @@ object CpsContT {
 class TestCpsContT {
 
   @Test
-  def checkShiftReset(): Unit = {
+  def checkShiftReset() = {
     val r = CpsContT.resetT[Future,Int,Int]{
         for{
           x <- CpsContT.pure(1)
@@ -188,7 +188,7 @@ class TestCpsContT {
   }
 
   @Test
-  def checkShiftReset2(): Unit = {
+  def checkShiftReset2() = {
     val r = CpsContT.resetT[Future, Int, Int] {
       for {
         x <- CpsContT.pure(1)
@@ -208,7 +208,7 @@ class TestCpsContT {
   }
 
   @Test
-  def checkShiftReset3(): Unit = {
+  def checkShiftReset3() = {
     val r = async[[T]=>>CpsContT[Future,Int,T]] {
       val x = 1
       val y = await(CpsContT.shiftF[Future,Int,Int]{ k =>
@@ -229,7 +229,7 @@ class TestCpsContT {
   }
 
   @Test
-  def checkShiftReset4(): Unit = {
+  def checkShiftReset4() = {
     val r = async[Future] {
       val x = 1
       val fr = async[[T]=>>CpsContT[Future,Int,T]] {

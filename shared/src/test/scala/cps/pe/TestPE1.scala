@@ -21,7 +21,7 @@ class TestPE1:
      val future = c.unsafeRunFuture().map(x => assert(x == 3))
      FutureCompleter(future)
 
-  @Test def tBlockNoAsync(): Unit = 
+  @Test def tBlockNoAsync() = 
      val c = async[PureEffect]{
          val x1 = 3
          val x2 = 4 //await(T1.cbi(4))
