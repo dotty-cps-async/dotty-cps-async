@@ -32,7 +32,9 @@ object BooleanShortcutsTransform {
         val xSync = xCps.unpure.get
         val ySync = yCps.unpure.get
         if ((xSync eq x) && (ySync eq y)) then CpsTree.unchangedPure(term, owner)
-        else CpsTree.pure(term, owner, cpy.Apply(term)(Select(xSync, methodSymbol.name.toTermName), List(ySync)))
+        else
+          val fun = Select(xSync, methodSymbol.name.toTermName).withSpan(term.fun.span)
+          CpsTree.pure(term, owner, cpy.Apply(term)(fun, List(ySync)))
       case (AsyncKind.Sync, AsyncKind.Async(internalKind)) =>
         val ifTerm = generateShortcutIf(term, xCps.unpure.get, yCps.transformed, methodSymbol, true)
         CpsTree.impure(term, owner, ifTerm, internalKind)

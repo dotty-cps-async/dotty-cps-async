@@ -82,11 +82,11 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
 
   def handleBooleanAndOr(applyTerm: Apply, fun: Term, x: Term, args: List[Term])(owner: Symbol): CpsTree = {
 
-    def shortcutOpConst(x: Term): (Term, Boolean) = {
+    def shortcutOpConst(cond: Term): (Term, Boolean) = {
       if (fun.symbol == logicalOrSym) {
-        (x, true)
+        (cond, true)
       } else {
-        ('{ !${ x.asExprOf[Boolean] } }.asTerm, false)
+        ('{ !${ cond.asExprOf[Boolean] } }.asTerm, false)
         // (Apply(Select(x,logicalNotSym),List()), false)
       }
     }

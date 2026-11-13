@@ -13,25 +13,25 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
   // case Assign(left,right)
   def run(using Quotes)(left: quotes.reflect.Term, right: quotes.reflect.Term): CpsExpr[F, T] =
     import quotes.reflect._
-    // widenTermRefByName: a reference to a field or a val has a singleton type (`F[h.n.type]` can't be sealed),
-    // literal types are kept (the assigned variable can have a literal type).
-    right.tpe.widenTermRefByName.asType match
+    // the exact type of the right part: the assigned variable can have a literal or a singleton type
+    right.tpe.asType match
       case '[r] =>
+        val cpsRight = Async.nestTransform(right.asExprOf[r], cpsCtx)
         left match
           case Select(obj, _) =>
             // the left part is async or changed only through the qualifier, which is transformed once.
+            // widenTermRefByName: `F[h.type]` for a qualifier `h` can't be sealed
             obj.tpe.widenTermRefByName.asType match
               case '[o] =>
                 val cpsObj = Async.nestTransform(obj.asExprOf[o], cpsCtx)
-                val cpsRight = Async.nestTransform(right.asExprOf[r], cpsCtx)
                 if (cpsObj.isAsync) then runAsyncQualifier(left, cpsObj, right, cpsRight)
                 else
                   // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
                   val syncLeft = if (cpsObj.isChanged) then cpsObj.syncOrigin.get.asTerm.select(left.symbol) else left
                   runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
           case _ =>
-            // a local variable
-            runSyncLeft(left, false, right, Async.nestTransform(right.asExprOf[r], cpsCtx))
+            // an identifier (a local variable or a field of the enclosing class): nothing to transform
+            runSyncLeft(left, false, right, cpsRight)
 
   private def runSyncLeft[R: Type](using
       Quotes

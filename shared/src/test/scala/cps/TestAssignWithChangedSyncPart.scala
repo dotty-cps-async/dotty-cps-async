@@ -40,6 +40,17 @@ class TestAssignWithChangedSyncPart {
     FutureCompleter(c)
   }
 
+  // the assigned variable has a singleton type, the right part is async: the type of the right part is not widened
+  @Test def testAssignAsyncRightToSingletonTypedVar() = {
+    val c = async[Future] {
+      val a = new Holder
+      var cur: a.type = a
+      cur = await(Future.successful[a.type](a))
+      assert(cur eq a)
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier of the left part is changed but sync, the right part is sync
   @Test def testAssignChangedSyncQualifier() = {
     val c = async[Future] {
