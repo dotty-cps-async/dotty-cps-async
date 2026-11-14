@@ -17,8 +17,17 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
     right.tpe.asType match
       case '[r] =>
         val cpsRight = Async.nestTransform(right.asExprOf[r], cpsCtx)
-        left match
-          case Select(obj, _) =>
+        val optQualifier = left match
+          case Select(obj, _) => Some(obj)
+          case Ident(_) =>
+            left.tpe match
+              case TermRef(prefixRef: TermRef, _) =>
+                // a member imported from a term path (`import O.*; n = ...`): the path is the qualifier
+                Some(Ref.term(prefixRef))
+              case _ => None
+          case _ => None
+        optQualifier match
+          case Some(obj) =>
             // the left part is async or changed only through the qualifier, which is transformed once.
             // widenTermRefByName: `F[h.type]` for a qualifier `h` can't be sealed
             obj.tpe.widenTermRefByName.asType match
@@ -31,8 +40,11 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
                   val purity = if (cpsRight.isAsync) then qualifierPurity(syncObj) else QualifierPurity.PurePath
                   if (purity != QualifierPurity.PurePath) then
                     // the qualifier is evaluated before the right part: `{ val q = obj; right.map(x => q.f = x) }`.
-                    // A path through a lazy val or an object keeps its singleton type: the type of the field can depend on it.
-                    val qualType = if (purity == QualifierPurity.IdempotentPath) then syncObj.tpe else TypeRepr.of[o]
+                    // A singleton type of a stable path (a lazy val or an object, or the result type of `def f(): b.type`) is kept:
+                    // the type of the field can depend on it. (A `var` with a singleton type is widened: its declared type is not known)
+                    val qualType = syncObj.tpe match
+                      case tr: TermRef if qualifierPurity(Ref.term(tr)) != QualifierPurity.Impure => tr
+                      case _                                                                         => TypeRepr.of[o]
                     val qualSym = Symbol.newVal(Symbol.spliceOwner, "xQualAssign", qualType, Flags.EmptyFlags, Symbol.noSymbol)
                     val qualValDef = ValDef(qualSym, Some(syncObj.changeOwner(qualSym)))
                     runAsyncRight(Ref(qualSym).select(left.symbol), cpsRight)
@@ -40,7 +52,7 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
                   else
                     val syncLeft = if (cpsObj.isChanged) then syncObj.select(left.symbol) else left
                     runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
-          case _ =>
+          case None =>
             // an identifier (a local variable or a field of the enclosing class): nothing to transform
             runSyncLeft(left, false, right, cpsRight)
 
@@ -70,9 +82,13 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
             if (term.symbol.flags.is(Flags.Param)) then methodParamType(term.symbol).map(isByNameType) else Some(false)
           case _ => Some(isByNameType(prefix.memberType(term.symbol)))
       case _ => None
+    // the statics of a Java class and a Scala.js global scope object are not values: never bound, no initialization order
+    def isNoValueModule: Boolean =
+      term.symbol.flags.is(Flags.Module) && (term.symbol.flags.is(Flags.JavaDefined) ||
+        term.symbol.moduleClass.annotations.exists(_.tpe.typeSymbol.fullName == "scala.scalajs.js.annotation.JSGlobalScope"))
     def refPurity: QualifierPurity =
       val flags = term.symbol.flags
-      if (flags.is(Flags.Package)) then QualifierPurity.PurePath
+      if (flags.is(Flags.Package) || isNoValueModule) then QualifierPurity.PurePath
       else if (flags.is(Flags.Mutable) || flags.is(Flags.Method) || !isByName.contains(false)) then QualifierPurity.Impure
       else if (flags.is(Flags.Lazy) || flags.is(Flags.Module)) then QualifierPurity.IdempotentPath
       else QualifierPurity.PurePath
@@ -132,12 +148,14 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
 
 /** Purity of a sync qualifier of an assignment, from the most to the least pure. */
 private[forest] enum QualifierPurity:
-  // `this`, `super`, a selection of a non-lazy val or a package from such a path: evaluated after the right part, it gives the same
-  // value without other effects.
+  // `this`, `super`, a selection of a non-lazy val, a package or a Java statics object from such a path: evaluated after the right part,
+  // it gives the same value without other effects.
   case PurePath
-  // a stable path through a lazy val or an object: its evaluation can run an initializer.
+  // a stable path through a lazy val or an object: its evaluation can run an initializer. Unlike dotty's `refPurity` (used by the
+  // plugin), every Scala object counts here: whether it has initializers is not checked.
   case IdempotentPath
-  // a method call, a var, a by-name parameter, a qualifier changed by the transformation, ...
+  // a method call, a var, a by-name parameter, or any other tree that is not a path. A qualifier changed by the transformation is
+  // classified by its new tree.
   case Impure
 
   def min(other: QualifierPurity): QualifierPurity =

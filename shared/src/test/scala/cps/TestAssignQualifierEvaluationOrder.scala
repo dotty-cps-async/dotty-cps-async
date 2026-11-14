@@ -116,6 +116,30 @@ class TestAssignQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the left part is a member imported from an object with an initializer: the object is initialized before the right part
+  @Test def testImportedMemberObjectInitialization() = {
+    val c = async[Future] {
+      import ImportedInitLoggedObject.*
+      n = await({ importedObjectLog += "right"; Future.successful(1) })
+      assert(importedObjectLog.toList == List("init", "right"), s"log=$importedObjectLog")
+      assert(ImportedInitLoggedObject.n == 1, s"n=${ImportedInitLoggedObject.n}")
+    }
+    FutureCompleter(c)
+  }
+
+  // the qualifier is a method call with the singleton type of a val, the type of the field depends on it
+  @Test def testSingletonTypedMethodCallQualifierPathDependentField() = {
+    val log = ArrayBuffer[String]()
+    val b: Box = intBox(3)
+    def theBox(): b.type = { log += "qualifier"; b }
+    val c = async[Future] {
+      theBox().v = await({ log += "right"; Future.successful(b.mk) })
+      assert(log.toList == List("qualifier", "right"), s"log=$log")
+      assert(b.v == 3, s"b.v=${b.v}")
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier is changed by the transformation (an inner lambda is unshifted), but sync
   @Test def testChangedSyncQualifier() = {
     val log = ArrayBuffer[String]()
@@ -132,7 +156,7 @@ class TestAssignQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
-  // stable qualifiers: a local val, a path through vals, an object, `this`
+  // a local val, a path through vals, `this` (not bound) and an object (bound with its singleton type): only the final values are checked
   @Test def testStableQualifiers() = {
     val h = new Holder
     val nested = new Nested(new Holder)
@@ -171,6 +195,14 @@ object TestAssignQualifierEvaluationOrder {
 
   // only `testObjectQualifierInitialization` touches InitLoggedObject
   val objectLog = ArrayBuffer[String]()
+
+  // only `testImportedMemberObjectInitialization` touches ImportedInitLoggedObject
+  val importedObjectLog = ArrayBuffer[String]()
+
+  object ImportedInitLoggedObject {
+    importedObjectLog += "init"
+    var n: Int = 0
+  }
 
   object InitLoggedObject {
     objectLog += "init"
