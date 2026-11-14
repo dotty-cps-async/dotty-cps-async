@@ -13,80 +13,60 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
   // case Assign(left,right)
   def run(using Quotes)(left: quotes.reflect.Term, right: quotes.reflect.Term): CpsExpr[F, T] =
     import quotes.reflect._
-    left.asExpr match
-      case '{ $le: lt } =>
-        val cpsLeft = Async.nestTransform(le, cpsCtx)
-        // shpuld have to structure in such waym as workarround against
-        //
-        runWithLeft(left, right, cpsLeft)
-      case _ =>
-        throw MacroError("Can't determinate type", left.asExpr)
+    // the exact type of the right part: the assigned variable can have a literal or a singleton type
+    right.tpe.asType match
+      case '[r] =>
+        val cpsRight = Async.nestTransform(right.asExprOf[r], cpsCtx)
+        left match
+          case Select(obj, _) =>
+            // the left part is async or changed only through the qualifier, which is transformed once.
+            // widenTermRefByName: `F[h.type]` for a qualifier `h` can't be sealed
+            obj.tpe.widenTermRefByName.asType match
+              case '[o] =>
+                val cpsObj = Async.nestTransform(obj.asExprOf[o], cpsCtx)
+                if (cpsObj.isAsync) then runAsyncQualifier(left, cpsObj, right, cpsRight)
+                else
+                  // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
+                  val syncLeft = if (cpsObj.isChanged) then cpsObj.syncOrigin.get.asTerm.select(left.symbol) else left
+                  runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
+          case _ =>
+            // an identifier (a local variable or a field of the enclosing class): nothing to transform
+            runSyncLeft(left, false, right, cpsRight)
 
-  def runWithLeft[L: Type](using
+  private def runSyncLeft[R: Type](using
       Quotes
-  )(left: quotes.reflect.Term, right: quotes.reflect.Term, cpsLeft: CpsExpr[F, L]): CpsExpr[F, T] = {
+  )(syncLeft: quotes.reflect.Term, isLeftChanged: Boolean, right: quotes.reflect.Term, cpsRight: CpsExpr[F, R]): CpsExpr[F, T] =
     import quotes.reflect._
-    right.asExpr match {
-      case '{ $re: rt } =>
-        val cpsRight = Async.nestTransform(re, cpsCtx)
-        run1(left, right, cpsLeft, cpsRight)
-      case _ =>
-        throw MacroError("Can't determinate type", right.asExpr)
-    }
-  }
+    if (!cpsRight.isAsync)
+      if (!isLeftChanged && !cpsRight.isChanged) then CpsExpr.sync(monad, patternCode, false)
+      else CpsExpr.sync(monad, Assign(syncLeft, cpsRight.syncOriginOr(right.asExprOf[R]).asTerm).asExprOf[T], true)
+    else CpsExpr.async(monad, cpsRight.map[T]('{ (x: R) => ${ Assign(syncLeft, 'x.asTerm).asExprOf[T] } }).transformed)
 
-  def run1[L: Type, R: Type](using
+  private def runAsyncQualifier[O: Type, R: Type](using
       Quotes
-  )(left: quotes.reflect.Term, right: quotes.reflect.Term, cpsLeft: CpsExpr[F, L], cpsRight: CpsExpr[F, R]): CpsExpr[F, T] =
-    import quotes.reflect._
-    if (!cpsLeft.isAsync) {
-      if (!cpsRight.isAsync)
-        CpsExpr.sync(monad, patternCode, false)
-      else // !cpsLeft.isAsync && cpsRight.isAsync
-        CpsExpr.async(monad, cpsRight.map[T]('{ (x: R) => ${ Assign(left, 'x.asTerm).asExprOf[T] } }).transformed)
-    } else { // (cpsLeft.isAsync) {
-      left match
-        case Select(obj, sym) =>
-          obj.asExpr match
-            case '{ $o: ot } =>
-              val lu = Async.nestTransform(o, cpsCtx)
-              run2(left, right, cpsLeft, cpsRight, lu)
-            case _ =>
-              throw MacroError("Can't determinate type", obj.asExpr)
-        case _ => // non-assignable entity ?
-          throw MacroError("assign to async non-select is impossible", patternCode)
-    }
-
-  def run2[L: Type, R: Type, LU: Type](using
-      Quotes
-  )(
-      left: quotes.reflect.Term,
-      right: quotes.reflect.Term,
-      cpsLeft: CpsExpr[F, L],
-      cpsRight: CpsExpr[F, R],
-      cpsLu: CpsExpr[F, LU]
-  ): CpsExpr[F, T] =
+  )(left: quotes.reflect.Term, cpsObj: CpsExpr[F, O], right: quotes.reflect.Term, cpsRight: CpsExpr[F, R]): CpsExpr[F, T] =
     import quotes.reflect._
     if (!cpsRight.isAsync) {
+      val syncRight = cpsRight.syncOriginOr(right.asExprOf[R]).asTerm
       CpsExpr.async[F, T](
         monad,
-        cpsLu
+        cpsObj
           .map[T]('{ x =>
-            ${ Assign('x.asTerm.select(left.symbol), right).asExprOf[T] }
+            ${ Assign('x.asTerm.select(left.symbol), syncRight).asExprOf[T] }
           })
           .transformed
       )
     } else {
       CpsExpr.async[F, T](
         monad,
-        cpsLu
+        cpsObj
           .flatMap[T]('{ l =>
             ${
               cpsRight
-                .flatMap[T](
+                .map[T](
                   '{ r =>
                     ${
-                      Assign('l.asTerm.select(left.symbol), 'r.asTerm).asExprOf[F[T]]
+                      Assign('l.asTerm.select(left.symbol), 'r.asTerm).asExprOf[T]
                     }
                   }
                 )

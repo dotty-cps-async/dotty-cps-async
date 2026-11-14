@@ -16,7 +16,10 @@ object AssignTransform {
         val lhsQual = RootTransform(sel.qualifier, owner, nesting + 1)
         lhsQual.asyncKind match
           case AsyncKind.Sync =>
-            lhsSyncAssign(term, owner, nesting)
+            // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
+            val qual = lhsQual.unpure.get
+            val lhs = if (qual eq sel.qualifier) then term.lhs else qual.select(sel.symbol).withSpan(sel.span)
+            lhsSyncAssign(term, lhs, owner, nesting)
           case AsyncKind.Async(internalKind) =>
             lhsSelectAsyncAssign(term, sel, lhsQual, owner, nesting)
           case AsyncKind.AsyncLambda(body) =>
@@ -25,26 +28,24 @@ object AssignTransform {
         val cpsLhs = RootTransform(term.lhs, owner, nesting)
         cpsLhs.asyncKind match
           case AsyncKind.Sync =>
-            lhsSyncAssign(term, owner, nesting)
+            lhsSyncAssign(term, term.lhs, owner, nesting)
           case AsyncKind.Async(internalKind) =>
             throw CpsTransformException(s"Impossible: async assignmebt which is not select, $cpsLhs", term.srcPos)
           case AsyncKind.AsyncLambda(body) =>
             throw CpsTransformException(s"Can't assign value to async lambda", term.srcPos)
   }
 
-  def lhsSyncAssign(term: Assign, owner: Symbol, nesting: Int)(using Context, CpsTopLevelContext): CpsTree = {
+  def lhsSyncAssign(term: Assign, lhs: Tree, owner: Symbol, nesting: Int)(using Context, CpsTopLevelContext): CpsTree = {
     val cpsRhs = RootTransform(term.rhs, owner, nesting)
     cpsRhs.asyncKind match
       case AsyncKind.Sync =>
-        if (cpsRhs.isOriginEqSync) {
-          CpsTree.unchangedPure(term, owner)
-        } else {
-          CpsTree.pure(term, owner, Assign(term.lhs, cpsRhs.unpure.get).withSpan(term.span))
-        }
+        val rhs = cpsRhs.unpure.get
+        if ((rhs eq term.rhs) && (lhs eq term.lhs)) then CpsTree.unchangedPure(term, owner)
+        else CpsTree.pure(term, owner, Assign(lhs, rhs).withSpan(term.span))
       case AsyncKind.Async(internalKind) =>
         val sym = newSymbol(owner, "xAssign".toTermName, Flags.EmptyFlags, term.rhs.tpe.widen, Symbols.NoSymbol)
         val valDef = ValDef(sym.asTerm, EmptyTree)
-        val nAssign = Assign(term.lhs, ref(sym)).withSpan(term.span)
+        val nAssign = Assign(lhs, ref(sym)).withSpan(term.span)
         MapCpsTree(term, owner, cpsRhs, MapCpsTreeArgument(Some(valDef), CpsTree.unchangedPure(nAssign, owner)))
       case AsyncKind.AsyncLambda(body) =>
         throw CpsTransformException(s"Can't assign async lambda", term.srcPos)

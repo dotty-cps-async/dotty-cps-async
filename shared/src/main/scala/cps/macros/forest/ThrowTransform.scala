@@ -25,7 +25,7 @@ object ThrowTransform:
       val errorMonad = monad.asExprOf[CpsThrowMonad[F]]
       if (!cpsEx.isAsync)
         // TODO: think, mb leave as is...
-        CpsExpr.async[F, T](monad, '{ ${ errorMonad }.error(${ ex }) })
+        CpsExpr.async[F, T](monad, '{ ${ errorMonad }.error(${ cpsEx.syncOriginOr(ex) }) })
       else
         CpsExpr.async[F, T](monad, cpsEx.flatMap[T]('{ (ex: S) => ${ errorMonad }.error(ex) }).transformed)
     else
