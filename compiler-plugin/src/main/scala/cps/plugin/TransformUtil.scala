@@ -22,8 +22,18 @@ object TransformUtil {
     substParamsMap(term, map)
   }
 
+  /** Substitute the symbols from `map` in `term`, also in the types of all trees.
+    *
+    * When all substitutes are references to symbols, the substitution is done by TreeTypeMap: it changes the types of all trees,
+    * including patterns, and gives new symbols to the local definitions whose types refer to the substituted symbols (as `val c =
+    * n.children` with type `(n.Child, n.Child)` for a substituted lambda parameter `n`,
+    * https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    */
   def substParamsMap(term: Tree, map: Map[Symbol, Tree])(using Context): Tree = {
+    val refs = map.toList.collect { case (sym, ref: Ident) if ref.symbol.exists => (sym, ref.symbol) }
     if (map.isEmpty) then term
+    else if (refs.size == map.size) then
+      new ast.TreeTypeMap(substFrom = refs.map(_._1), substTo = refs.map(_._2)).apply(term)
     else
       val transformer = new TreeMap {
         override def transform(tree: Tree)(using Context) = {

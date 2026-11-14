@@ -77,6 +77,21 @@ object TransformUtil:
     if (annotations.isEmpty) then x
     else Typed(x, Inferred(annotations.foldRight(x.tpe.widen)((annot, tp) => AnnotatedType(tp, annot))))
 
+  /** Substitute the symbols from `association` in `body` (references to lambda parameters by references to the parameters of a
+    * new lambda), also in the types of all trees. Definitions at the top level of the result are owned by `owner`.
+    *
+    * The substitution is the beta-reduction of `((s1, ..., sn) => body)(a1, ..., an)` for `association` `si -> ai`, done by
+    * `Term.betaReduce`: the compiler substitutes parameters by the arguments which are paths with TreeTypeMap. It changes the
+    * types of all trees, including patterns, and gives new symbols to the local definitions whose types refer to the
+    * substituted symbols. For example, `val c = n.children` with type `(n.Child, n.Child)` becomes a new val of type
+    * `(n1.Child, n1.Child)` when `n` is substituted by `n1`, so `c._1` has type `n1.Child`
+    * (https://github.com/dotty-cps-async/dotty-cps-async/issues/150). A TreeMap can't do this: the quotes API has no types of
+    * pattern trees (`Unapply`, `Wildcard`, `Bind`), which are pickled.
+    *
+    * The lambda is built only for the reduction: its parameter trees have the symbols from `association` and its body is `body`
+    * (which may have another type than the lambda the symbols come from); its result type is `Any`, so the reduction does not
+    * insert a cast of the result.
+    */
   def changeSymsInTerm(using
       Quotes
   )(
@@ -84,105 +99,36 @@ object TransformUtil:
       body: quotes.reflect.Term,
       owner: quotes.reflect.Symbol
   ): quotes.reflect.Term = {
-    changeSymsInTree(association, body, owner).asInstanceOf[quotes.reflect.Term]
-  }
-
-  def changeSymsInTree(using
-      qctx: Quotes
-  )(
-      association: Map[qctx.reflect.Symbol, qctx.reflect.Tree],
-      body: quotes.reflect.Tree,
-      owner: quotes.reflect.Symbol
-  ): quotes.reflect.Tree =
     import quotes.reflect._
-
-    // TODO: mege wirh changeSyms
-    val scope = MacroReflectScopeInstance[qctx.type]
-    val argTransformer = new scope.PatternAwareTreeMap {
-
-      def lookupParamTerm(sym: Symbol): Option[Term] =
-        association.get(sym) match
-          case Some(paramTree) =>
-            paramTree match
-              case paramTerm: Term => Some(paramTerm)
-              case _ =>
-                throw MacroError(s"term expected for lambda param, we have ${paramTree}", body.asExpr)
-          case _ => None
-
-      override def transformTerm(tree: Term)(owner: Symbol): Term =
-        tree match
-          case Ident(name) =>
-            lookupParamTerm(tree.symbol) match
-              case Some(paramTerm) => paramTerm
-              case _               => super.transformTerm(tree)(owner)
-          case sel @ Select(qualifier, name) =>
-            // Workaround for https://github.com/scala/scala3/issues/17445:
-            // Default TreeMap calls Select.copy which converts DerivedName (e.g. DefaultGetterName)
-            // to SimpleName via string conversion, causing -Xcheck-macros "symbols differ" failure.
-            // Use Select(qualifier, symbol) to preserve the original name kind.
-            val newQualifier = transformTerm(qualifier)(owner)
-            if (newQualifier eq qualifier) then tree
-            else Select(newQualifier, sel.symbol)
-          case _ => super.transformTerm(tree)(owner)
-
-      override def transformTypeTree(tree: TypeTree)(owner: Symbol): TypeTree =
-        tree match
-          case Singleton(ref) =>
-            lookupParamTerm(ref.symbol) match
-              case Some(paramTerm) => Singleton(paramTerm)
-              case None            => super.transformTypeTree(tree)(owner)
-          case a @ Annotated(tp, annotation) =>
-            // bug in default TreeTransform, should process Annotated
-            Annotated.copy(a)(transformTypeTree(tp)(owner), transformTerm(annotation)(owner))
-          case i @ Inferred() =>
-            // keep the original tree when the type is not changed (types are compared structurally)
-            val ntp = transformType(i.tpe)(owner)
-            if (ntp == i.tpe) i else Inferred(ntp)
-          case t: TypeSelect =>
-            // copy makes a new tree with a simple name when the name is derived
-            val nQualifier = transformTerm(t.qualifier)(owner)
-            if (nQualifier eq t.qualifier) t else TypeSelect.copy(t)(nQualifier, t.name)
-          case _ =>
-            super.transformTypeTree(tree)(owner)
-
-      def transformType(tp: TypeRepr)(owner: Symbol): TypeRepr =
-        tp match
-          case ConstantType(c) => tp
-          case tref @ TermRef(qual, name) =>
-            lookupParamTerm(tref.termSymbol) match
-              case Some(paramTerm) => paramTerm.tpe
-              case None            => tp
-          case tp @ TypeRef(internal, name) =>
-            internal match
-              case tr: TermRef =>
-                lookupParamTerm(tr.termSymbol) match
-                  case Some(paramTerm) =>
-                    TypeSelect(paramTerm, name).tpe
-                  case None =>
-                    tp
-              case _ =>
-                // we can't get inside, since it is
-                tp
-          case SuperType(thisTpe, superTpe) =>
-            SuperType(transformType(thisTpe)(owner), transformType(superTpe)(owner))
-          case Refinement(parent, name, info) =>
-            Refinement(transformType(parent)(owner), name, transformType(info)(owner))
-          case AppliedType(tycon, args) =>
-            transformType(tycon)(owner).appliedTo(args.map(x => transformType(x)(owner)))
-          case AnnotatedType(underlying, annot) =>
-            AnnotatedType(transformType(underlying)(owner), transformTerm(annot)(owner))
-          case AndType(rhs, lhs) => AndType(transformType(rhs)(owner), transformType(lhs)(owner))
-          case OrType(rhs, lhs)  => OrType(transformType(rhs)(owner), transformType(lhs)(owner))
-          case MatchType(bound, scrutinee, cases) =>
-            MatchType(transformType(bound)(owner), transformType(scrutinee)(owner), cases.map(x => transformType(x)(owner)))
-          case ByNameType(tp1)     => ByNameType(transformType(tp1)(owner))
-          case ParamRef(x, index)  => tp // transform tp ?
-          case NoPrefix()          => tp
-          case TypeBounds(low, hi) => TypeBounds(transformType(low)(owner), transformType(hi)(owner))
-          case _                   => tp
-
-    }
-    argTransformer.transformTree(body)(owner)
+    if (association.isEmpty) then body
+    else
+      val (syms, values) = association.toList.unzip
+      val args = values.map {
+        case arg: Term => arg
+        case other =>
+          throw MacroError(s"term expected for substitution of a symbol, we have ${other}", body.asExpr)
+      }
+      // ValDef(sym, None) has the declared type of sym as tpt
+      val params = syms.map(sym => ValDef(sym, None))
+      val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => TypeRepr.of[Any])
+      val lambda = Lambda(owner, mt, (_, _) => Literal(NullConstant())) match
+        case block @ Block(List(ddef: DefDef), closure) =>
+          // the result of the reduction receives the position of the application, so we wrap the body to keep its position
+          val wrappedBody = Block(Nil, body.changeOwner(ddef.symbol))
+          val nDdef = DefDef.copy(ddef)(ddef.name, List(TermParamClause(params)), ddef.returnTpt, Some(wrappedBody))
+          Block.copy(block)(List(nDdef), closure)
+        case other =>
+          throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", body.asExpr)
+      Term.betaReduce(Apply(Select.unique(lambda, "apply"), args)) match
+        case Some(reduced) =>
+          val unwrapped = reduced match
+            case Block(Nil, expr) => expr
+            case other            => other
+          // the definitions are owned by the owner of the macro expansion after the reduction
+          unwrapped.changeOwner(owner)
+        case None =>
+          throw MacroError(s"Internal error: can't substitute ${syms.mkString(",")} in the body", body.asExpr)
+  }
 
   /** The closure type of a lambda `Block(List(DefDef), Closure(meth, tpt))`, defined for a SAM type (also for a partial
     * function), with the result type of its method. A rebuilt lambda should keep them: `Lambda(...)` builds a function closure,
