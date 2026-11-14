@@ -764,9 +764,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       else throw MacroError("Sorry, functions with more than 3 parameters are not supported yet", posExprs(originLambda))
 
     def rLambda: Term =
-      val paramNames = params.map(_.name)
-      val paramTypes = params.map(_.tpt.tpe)
-      val shiftedType = cpsShiftedMethodType(paramNames, paramTypes, body.otpe.asInstanceOf[TypeRepr])
+      val shiftedType = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, TypeRepr.of[F].appliedTo(body.otpe.widen))
       // TODO: think, maybe exists case, where we need substitute Ident(param) for x[i] (?)
       //       because otherwise it's quite strange why we have such interface in compiler
 
@@ -779,7 +777,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
           //  TODO: always pass mapping between new symbols as parameters to transformed
           if (cpsCtx.flags.debugLevel >= 15)
             cpsCtx.log(s"generate rLambda: params in lambda-arg = ${args}")
-          TransformUtil.substituteLambdaParams(params, args, body.transformed, owner).changeOwner(owner)
+          TransformUtil.substituteLambdaParams(params, args, body.transformed, owner)
         }
       )
 

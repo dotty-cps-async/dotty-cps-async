@@ -65,14 +65,14 @@ object ChangeOwnerTest:
         lambda.asExprOf[() => T]
 
   /**
-   * Simulate with context lambda + substituteLambdaParams (TreeMap traversal) +
+   * Simulate with context lambda + substituteLambdaParams +
    * full BlockTransform path.
    * The actual async macro:
    * 1. Wraps body in context lambda: (ctx: C) ?=> body
    * 2. Extracts the lambda, does body.changeOwner(spliceOwner).asExprOf[T]
    * 3. Runs BlockTransform which seals last separately, processes via ApplyTreeTransform
    * 4. Reassembles via SyncCpsExpr.syncOrigin / ValWrappedCpsExpr.syncOrigin
-   * 5. Creates new Lambda using substituteLambdaParams + changeOwner
+   * 5. Creates new Lambda using substituteLambdaParams (the result is owned by the new lambda)
    */
   inline def simulateWithTreeMap[T](inline body: T): () => T =
     ${ simulateWithTreeMapImpl[T]('body) }
@@ -135,12 +135,12 @@ object ChangeOwnerTest:
         // SyncCpsExpr.fLast: '{ dm.pure(${ last } : T) }
         val wrappedExpr: Expr[T] = '{ identity[T]($syncOriginExpr : T) }
 
-        // Step 4: Create new lambda with substituteLambdaParams + changeOwner
+        // Step 4: Create new lambda with substituteLambdaParams
         // (simulates transformContextLambdaImplNoPreprocess Lambda)
         val newMt = MethodType(List("evidence"))(_ => List(ctxType), _ => TypeRepr.of[T])
         val newLambda = Lambda(Symbol.spliceOwner, newMt,
           (owner, params) =>
-            TransformUtil.substituteLambdaParams(oldParams, params, wrappedExpr.asTerm, owner).changeOwner(owner)
+            TransformUtil.substituteLambdaParams(oldParams, params, wrappedExpr.asTerm, owner)
         )
 
         // Step 5: Apply the lambda to get T, then wrap in () => T

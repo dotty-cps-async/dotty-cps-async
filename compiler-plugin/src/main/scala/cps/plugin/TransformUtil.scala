@@ -22,41 +22,48 @@ object TransformUtil {
     substParamsMap(term, map)
   }
 
+  /** Substitute the symbols from `map` in `term` by the trees from `map`, also in the types of all trees.
+    *
+    * The substitution is done by TreeTypeMap: references to the symbols are replaced by the trees, and the symbols in types by the
+    * types of the trees. TreeTypeMap changes the types of all trees, including patterns, and gives new symbols to the local
+    * definitions whose types change (as `val c = n.children` with type `(n.Child, n.Child)` for a substituted lambda parameter
+    * `n`, https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    */
   def substParamsMap(term: Tree, map: Map[Symbol, Tree])(using Context): Tree = {
     if (map.isEmpty) then term
     else
-      val transformer = new TreeMap {
-        override def transform(tree: Tree)(using Context) = {
-          tree match
-            case tree: Ident if (tree.isTerm) =>
-              map.get(tree.symbol) match
-                case Some(value) =>
-                  if (value.span.exists) then value else value.withSpan(tree.span)
-                case None => tree
-            case tt: TypeTree =>
-              tt.tpe match
-                case tr: TermRef =>
-                  map.get(tr.symbol) match
-                    case Some(value) =>
-                      TypeTree(value.symbol.termRef).withSpan(tt.span)
-                    case None =>
-                      super.transform(tt)
-                case _ =>
-                  super.transform(tt)
-            case _ =>
-              super.transform(tree)
+      val from = map.keys.toList
+      val to = from.map(sym => map(sym).tpe)
+      new ast.TreeTypeMap(
+        typeMap = _.subst(from, to),
+        treeMap = {
+          case tree: Ident if tree.isTerm && map.contains(tree.symbol) =>
+            val value = map(tree.symbol)
+            if (value.span.exists) then value else value.withSpan(tree.span)
+          case tree => tree
         }
-      }
-      transformer.transform(term)
+      ).apply(term)
+  }
+
+  /** Method type of a lambda rebuilt from a lambda with the parameters `params`: references to these parameters in `paramTypes`
+    * and `resultType` (types of the original body, as `n.Child` for a parameter `n`) become the parameters of the new method
+    * type, as in the body after [[substParams]] (https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    */
+  def lambdaMethodType(
+      params: List[ValDef],
+      paramTypes: List[Type],
+      resultType: Type,
+      companion: MethodTypeCompanion = MethodType
+  )(using Context): MethodType = {
+    val syms = params.map(_.symbol)
+    companion(params.map(_.name))(
+      mt => paramTypes.map(_.subst(syms, mt.paramRefs)),
+      mt => resultType.subst(syms, mt.paramRefs)
+    )
   }
 
   def makeLambda(params: List[ValDef], resultType: Type, owner: Symbol, body: Tree, bodyOwner: Symbol)(using Context): Block = {
-    val paramNames = params.map(_.name)
-    val paramTypes = params.map(_.tpe.widen)
-    val mt = MethodType(paramNames)(
-      x => paramTypes,
-      x => resultType
-    )
+    val mt = lambdaMethodType(params, params.map(_.tpe.widen), resultType)
     val meth = Symbols.newAnonFun(owner, mt)
     val retval = Closure(
       meth,

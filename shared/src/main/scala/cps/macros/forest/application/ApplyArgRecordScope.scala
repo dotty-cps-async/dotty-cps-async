@@ -280,14 +280,12 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         shiftedArgExpr(existsAsync, shiftType, term.tpe, params, body)
       else if (shouldBeChangedSync) then
         val (params, body) = extractParamsAndBody()
-        val paramNames = params.map(_.name)
-        val paramTypes = params.map(_.tpt.tpe)
         val methodKind =
           if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
         cpsBody.syncOrigin match
           case Some(syncBody) =>
             if (cpsBody.isChanged) then
-              val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(syncBody.tpe.widen))
+              val mt = TransformUtil.lambdaMethodType(methodKind, params, lambdaResultType(syncBody.tpe.widen))
               rebuildLambda(mt, params, syncBody)
             else term
           case None =>
@@ -303,7 +301,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                   val nBody = topMatch(cpsBody.transformed) match
                     case Some(m) if isPartialFunction => mapCases(m, flatten)
                     case _                            => flatten(cpsBody.transformed)
-                  val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => lambdaResultType(body.tpe.widen))
+                  val mt = TransformUtil.lambdaMethodType(methodKind, params, lambdaResultType(body.tpe.widen))
                   rebuildLambda(mt, params, nBody)
                 case _ =>
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
@@ -336,7 +334,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       * type.
       */
     private def rebuildLambda(mt: MethodType, params: List[ValDef], nBody: Term): Term =
-      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner))
       originClosureType match
         case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)
         case None           => lambda
@@ -460,7 +458,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
       val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
-      val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
+      val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner))
       TransformUtil.withClosureType(lambda, partialFunctionType.appliedTo(List(from, resType)))
 
     private def createAsyncLambda(mt: MethodType, params: List[ValDef], shiftType: ApplicationShiftType, owner: Symbol): Term =
@@ -475,13 +473,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
               throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncLambda ", term.asExpr)
-      Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner))
 
     private def changeArgs(params: List[ValDef], nParams: List[Tree], body: Term, owner: Symbol): Term =
       TransformUtil.substituteLambdaParams(params, nParams, body, owner)
-
-    private def changeIdent(body: Term, oldSym: Symbol, newSym: Symbol, owner: Symbol): Term =
-      TransformUtil.changeSymsInTerm(Map(oldSym -> Ref(newSym)), body, owner)
 
   }
 

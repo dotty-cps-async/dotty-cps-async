@@ -62,14 +62,13 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                     )
                   else if (cpsBinding.isChanged) then
                     val newSym = Symbol.newVal(Symbol.spliceOwner, name, tpt.tpe, vx.symbol.flags, Symbol.noSymbol)
-                    val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => resultType)
+                    val mt = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, resultType)
                     val newValDef = ValDef(
                       newSym,
                       cpsBinding.syncOrigin.map(body =>
                         Lambda(
                           newSym,
                           mt,
-                          // (owner,args)=> TransformUtil.substituteLambdaParams(params,args,body,owner).changeOwner(owner)
                           (owner, args) => TransformUtil.substituteLambdaParams(params, args, body, owner)
                         )
                       )
@@ -203,14 +202,14 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                           val rhs = binding.oldValDef.rhs.get
                           checkLambdaDef(rhs) match
                             case Some(Lambda(params, body)) =>
-                              val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => binding.newResultType)
+                              val mt = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, binding.newResultType)
                               Lambda(
                                 Symbol.spliceOwner,
                                 mt,
                                 (owner, args) =>
-                                  (if inlineProxies then TransformUtil.substituteLambdaParams(params, args, body, owner)
-                                   else Apply(Select.unique(Ref(binding.newSym), "apply"), args.map(_.asInstanceOf[Term])))
-                                    .changeOwner(owner)
+                                  // the substitution gives the definitions to `owner`, the application has no definitions
+                                  if inlineProxies then TransformUtil.substituteLambdaParams(params, args, body, owner)
+                                  else Apply(Select.unique(Ref(binding.newSym), "apply"), args.map(_.asInstanceOf[Term]))
                               )
                             case _ =>
                               throw MacroError("Lambda in rhs expected", posExprs(rhs))
