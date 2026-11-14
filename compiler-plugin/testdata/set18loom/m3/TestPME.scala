@@ -20,6 +20,9 @@ sealed trait PoorManEffect[+T]
 
 object PoorManEffect {
 
+  /** Time after which waiting for a result fails, so a lost result fails the test instead of hanging it. */
+  val awaitTimeoutNanos: Long = TimeUnit.SECONDS.toNanos(30)
+
   // low-level unsafe internal API
   trait RunAPI {
     def submitAndForget[T](pe: PoorManEffect[T]): Unit
@@ -103,7 +106,6 @@ object PoorManEffect {
 
     override def submit[T](pe: PoorManEffect[T]): Long =  {
       val id = nextId
-      //runQueue.enqueue(EvalRecord(pe,id))
       // register the waiter before the effect is queued: a carrier can complete it at once
       waiters(id) = new CompletableFuture[Any]()
       runQueue.add(EvalRecord(pe,id))
@@ -266,6 +268,7 @@ object PoorManEffect {
                      throw new RuntimeException(s"process finished, but no result for id ${id0}")
             else
                var retval: A | Null = null
+               val deadline = System.nanoTime() + awaitTimeoutNanos
                while(!resultFuture.isDone) {
                  blocking {
                    try
@@ -274,9 +277,10 @@ object PoorManEffect {
                      case ex: ExecutionException =>
                        throw ex.getCause()
                      case te: TimeoutException =>
-                       if (runner.processEntryCounter.get() == 0)
+                       // a carrier can still deliver the result: wait while it runs, up to the deadline
+                       if (runner.processEntryCounter.get() == 0 && !resultFuture.isDone)
                          throw new RuntimeException(s"process finished, but no result for id ${id0}")
-                       else
+                       else if (System.nanoTime() > deadline)
                          println(s"timeout waiting for id ${id0}")
                          throw new RuntimeException(s"timeout for id ${id0}")
                  }
@@ -315,12 +319,14 @@ class PoorManEffectRuntimeAwait(rt:PoorManEffect.RunAPI) extends CpsRuntimeAwait
     blocking {
       try {
         var retval: A | Null = null
+        val deadline = System.nanoTime() + PoorManEffect.awaitTimeoutNanos
         while (!cf.isDone) {
           try retval = cf.get(500, TimeUnit.MILLISECONDS)
           catch
             case ex: ExecutionException =>
               throw ex.getCause()
             case _: TimeoutException =>
+              if (System.nanoTime() > deadline) then throw new RuntimeException(s"timeout waiting for submit id ${id}")
               if (!rt.isActive) rt.activate()
         }
         // cf can be already completed before the loop (then retval is not set): get() wraps the failure into

@@ -286,46 +286,54 @@ object DotcInvocations {
     val mainClass = "testUtil.JunitMain"
     val cmd = s"java -cp $classpath2 $mainClass $testClassName"
     println(s"Running $cmd")
-    val process = Runtime.getRuntime.exec(cmd)
-    val timeout = 1.minute
-    blocking {
-      val exitCode = process.waitFor(timeout.toSeconds, java.util.concurrent.TimeUnit.SECONDS)
-      if (exitCode) {
-        val output = scala.io.Source.fromInputStream(process.getInputStream).mkString
-        val errorOutput = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+    runProcess(cmd, 1.minute) match
+      case (Some(_), output, errorOutput) =>
         if (!output.endsWith("Ok\n")) {
           println(s"output=${output}")
           println(s"error=${errorOutput}")
           throw new RuntimeException(s"Process $cmd failed")
         }
-      } else {
-        val output = scala.io.Source.fromInputStream(process.getInputStream).mkString
-        val errorOutput = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+      case (None, output, errorOutput) =>
         println(s"output=${output}")
         println(s"error=${errorOutput}")
-        process.destroy()
         throw new RuntimeException(s"Process $cmd timed out")
-      }
-    }
   }
 
   def runJVMInClasspath(mainClass: String, classpath: String, timeout: FiniteDuration = 1.minute): (Int, String) = {
     val cmd = s"java -cp $classpath $mainClass"
     println(s"Running $cmd")
-    val process = Runtime.getRuntime.exec(cmd)
-    blocking {
-      val exitCode = process.waitFor(timeout.toSeconds, java.util.concurrent.TimeUnit.SECONDS)
-      if (exitCode) {
-        val output = scala.io.Source.fromInputStream(process.getInputStream).mkString
-        val errorOutput = scala.io.Source.fromInputStream(process.getErrorStream).mkString
+    runProcess(cmd, timeout) match
+      case (Some(exitCode), output, errorOutput) =>
         println(s"output=${output}")
         println(s"error=${errorOutput}")
-        (process.exitValue(), output)
-      } else {
-        process.destroy()
+        (exitCode, output)
+      case (None, output, errorOutput) =>
+        println(s"output=${output}")
+        println(s"error=${errorOutput}")
         throw new RuntimeException(s"Process $cmd timed out")
-      }
+  }
+
+  /** Run `cmd` and wait for it at most `timeout`.
+    *
+    * The output is read while the process runs (a process with more output than the pipe buffer would block otherwise), and a
+    * process which is not finished in time is destroyed before its output is collected (its output is not closed otherwise).
+    *
+    * @return
+    *   the exit code (`None` on timeout), the output and the error output
+    */
+  private def runProcess(cmd: String, timeout: FiniteDuration): (Option[Int], String, String) = {
+    val process = Runtime.getRuntime.exec(cmd)
+    def readAll(in: java.io.InputStream): Future[String] =
+      Future(blocking(scala.io.Source.fromInputStream(in).mkString))(using ExecutionContext.global)
+    val output = readAll(process.getInputStream)
+    val errorOutput = readAll(process.getErrorStream)
+    val finished = blocking(process.waitFor(timeout.toSeconds, java.util.concurrent.TimeUnit.SECONDS))
+    if (!finished) {
+      process.destroyForcibly()
+      blocking(process.waitFor())
     }
+    val exitCode = if (finished) Some(process.exitValue()) else None
+    (exitCode, Await.result(output, 1.minute), Await.result(errorOutput, 1.minute))
   }
 
   def reportErrors(reporter: Reporter): Unit = {

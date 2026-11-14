@@ -17,6 +17,9 @@ sealed trait PoorManEffect[+T]
 
 object PoorManEffect {
 
+  /** Time after which waiting for a result fails, so a lost result fails the test instead of hanging it. */
+  val awaitTimeoutNanos: Long = TimeUnit.SECONDS.toNanos(30)
+
   // low-level unsafe internal API
   trait RunAPI {
     def submitAndForget[T](pe: PoorManEffect[T]): Unit
@@ -238,10 +241,12 @@ object PoorManEffect {
               throw new RuntimeException(s"process finished, but no result for id ${id0}")
         } else {
           blocking {
-            try resultFuture.get()
+            try resultFuture.get(awaitTimeoutNanos, TimeUnit.NANOSECONDS)
             catch
               case ex: ExecutionException =>
                 throw ex.getCause()
+              case _: TimeoutException =>
+                throw new RuntimeException(s"timeout for id ${id0}")
           }
         }
 
@@ -267,12 +272,14 @@ class PoorManEffectRuntimeAwait(rt: PoorManEffect.RunAPI) extends CpsRuntimeAwai
         // mechanism that keeps a worker on the queue while we are parked. The
         // timeout-polling here is a defensive backstop for unforeseen races.
         var retval: A | Null = null
+        val deadline = System.nanoTime() + PoorManEffect.awaitTimeoutNanos
         while (!cf.isDone) {
           try retval = cf.get(500, TimeUnit.MILLISECONDS)
           catch
             case ex: ExecutionException =>
               throw ex.getCause()
             case _: TimeoutException =>
+              if (System.nanoTime() > deadline) then throw new RuntimeException(s"timeout waiting for submit id ${id}")
               if (!rt.isActive) rt.activate()
         }
         // cf can be already completed before the loop (then retval is not set): get() wraps the failure into
