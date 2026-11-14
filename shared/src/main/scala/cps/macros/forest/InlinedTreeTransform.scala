@@ -62,7 +62,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                     )
                   else if (cpsBinding.isChanged) then
                     val newSym = Symbol.newVal(Symbol.spliceOwner, name, tpt.tpe, vx.symbol.flags, Symbol.noSymbol)
-                    val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => resultType)
+                    val mt = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, params.map(_.tpt.tpe), resultType)
                     val newValDef = ValDef(
                       newSym,
                       cpsBinding.syncOrigin.map(body =>
@@ -203,7 +203,12 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                           val rhs = binding.oldValDef.rhs.get
                           checkLambdaDef(rhs) match
                             case Some(Lambda(params, body)) =>
-                              val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => binding.newResultType)
+                              val mt = TransformUtil.lambdaMethodType(
+                                MethodTypeKind.Plain,
+                                params,
+                                params.map(_.tpt.tpe),
+                                binding.newResultType
+                              )
                               Lambda(
                                 Symbol.spliceOwner,
                                 mt,

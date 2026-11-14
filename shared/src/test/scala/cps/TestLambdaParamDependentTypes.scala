@@ -129,6 +129,30 @@ class TestLambdaParamDependentTypes {
     FutureCompleter(c)
   }
 
+  // the result type of the lambda depends on the parameter
+  @Test def testDependentResult() = {
+    val c = async[Future] {
+      val r = nodes.map { (n: Node) =>
+        await(f(1, 2))
+        n.children._1
+      }
+      assert(r.map(_.w) == List(1, 10), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  @Test def testDependentResultOfChangedSyncLambda() = {
+    val c = async[Future] {
+      val z = await(f(0, 0))
+      val r = nodes.map { (n: Node) =>
+        val (l, r) = n.children
+        if (z > 0) l else r
+      }
+      assert(r.map(_.w) == List(2, 11), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
   @Test def testPartialFunction() = {
     val c = async[Future] {
       val r = nodes.collect {

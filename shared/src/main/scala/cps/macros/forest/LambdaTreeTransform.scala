@@ -30,7 +30,6 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       if (cpsCtx.flags.allowShiftedLambda) then AsyncLambdaCpsTree(owner, lambdaTerm, params, cpsBody, lambdaTerm.tpe)
       else throw MacroError("await inside lambda functions without enclosing async block", lambdaTerm.asExpr)
     } else if (cpsBody.isChanged) {
-      val paramNames = params.map(_.name)
       val paramTypes = params.map(_.tpt.tpe)
       val changedBody = cpsBody.syncOrigin.get
       // keep context function as context function (async block is a context lambda, see TransformUtil.contextLambdaAsFunction)
@@ -38,7 +37,7 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       // a SAM type (also a partial function) keeps the closure type and the result type of its method
       val closureType = TransformUtil.lambdaClosureType(lambdaTerm)
       val resultType = closureType.map(_._2).getOrElse(changedBody.tpe.widen)
-      val mt = MethodType(methodKind)(paramNames)(_ => paramTypes, _ => resultType)
+      val mt = TransformUtil.lambdaMethodType(methodKind, params, paramTypes, resultType)
       val lambda = Lambda(
         owner,
         mt,

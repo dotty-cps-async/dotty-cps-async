@@ -22,42 +22,27 @@ object TransformUtil {
     substParamsMap(term, map)
   }
 
-  /** Substitute the symbols from `map` in `term`, also in the types of all trees.
+  /** Substitute the symbols from `map` in `term` by the trees from `map`, also in the types of all trees.
     *
-    * When all substitutes are references to symbols, the substitution is done by TreeTypeMap: it changes the types of all trees,
-    * including patterns, and gives new symbols to the local definitions whose types refer to the substituted symbols (as `val c =
-    * n.children` with type `(n.Child, n.Child)` for a substituted lambda parameter `n`,
-    * https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    * The substitution is done by TreeTypeMap: references to the symbols are replaced by the trees, and the symbols in types by the
+    * types of the trees. TreeTypeMap changes the types of all trees, including patterns, and gives new symbols to the local
+    * definitions whose types change (as `val c = n.children` with type `(n.Child, n.Child)` for a substituted lambda parameter
+    * `n`, https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
     */
   def substParamsMap(term: Tree, map: Map[Symbol, Tree])(using Context): Tree = {
-    val refs = map.toList.collect { case (sym, ref: Ident) if ref.symbol.exists => (sym, ref.symbol) }
     if (map.isEmpty) then term
-    else if (refs.size == map.size) then
-      new ast.TreeTypeMap(substFrom = refs.map(_._1), substTo = refs.map(_._2)).apply(term)
     else
-      val transformer = new TreeMap {
-        override def transform(tree: Tree)(using Context) = {
-          tree match
-            case tree: Ident if (tree.isTerm) =>
-              map.get(tree.symbol) match
-                case Some(value) =>
-                  if (value.span.exists) then value else value.withSpan(tree.span)
-                case None => tree
-            case tt: TypeTree =>
-              tt.tpe match
-                case tr: TermRef =>
-                  map.get(tr.symbol) match
-                    case Some(value) =>
-                      TypeTree(value.symbol.termRef).withSpan(tt.span)
-                    case None =>
-                      super.transform(tt)
-                case _ =>
-                  super.transform(tt)
-            case _ =>
-              super.transform(tree)
+      val from = map.keys.toList
+      val to = from.map(sym => map(sym).tpe)
+      new ast.TreeTypeMap(
+        typeMap = _.subst(from, to),
+        treeMap = {
+          case tree: Ident if tree.isTerm && map.contains(tree.symbol) =>
+            val value = map(tree.symbol)
+            if (value.span.exists) then value else value.withSpan(tree.span)
+          case tree => tree
         }
-      }
-      transformer.transform(term)
+      ).apply(term)
   }
 
   def makeLambda(params: List[ValDef], resultType: Type, owner: Symbol, body: Tree, bodyOwner: Symbol)(using Context): Block = {

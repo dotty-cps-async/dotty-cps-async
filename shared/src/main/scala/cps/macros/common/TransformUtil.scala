@@ -33,6 +33,25 @@ object TransformUtil:
     val assoc: Map[Symbol, Tree] = paramsMap.map((k, i) => (k, Ref(indexedArgs(i).symbol)))
     changeSymsInTerm(assoc, body, owner)
 
+  /** Method type of a lambda rebuilt from the original lambda with parameters `params`: references to these parameters in
+    * `paramTypes` and `resultType` (a type of the original body, as `n.Child` for a parameter `n`) are replaced by the parameters
+    * of the new method type, as in the body after [[substituteLambdaParams]]. Otherwise the result type of the new lambda would
+    * refer to the parameter of the original one (https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    */
+  def lambdaMethodType(using
+      Quotes
+  )(
+      kind: quotes.reflect.MethodTypeKind,
+      params: List[quotes.reflect.ValDef],
+      paramTypes: List[quotes.reflect.TypeRepr],
+      resultType: quotes.reflect.TypeRepr
+  ): quotes.reflect.MethodType =
+    import quotes.reflect._
+    val syms = params.map(_.symbol)
+    def subst(mt: MethodType, tp: TypeRepr): TypeRepr =
+      tp.substituteTypes(syms, syms.indices.toList.map(mt.param))
+    MethodType(kind)(params.map(_.name))(mt => paramTypes.map(subst(mt, _)), mt => subst(mt, resultType))
+
   /** Build a lambda with one parameter as context function `(p: A) ?=> R` and cast it to `A => R` (both are erased to
     * `Function1`).
     *
@@ -91,6 +110,9 @@ object TransformUtil:
     * The lambda is built only for the reduction: its parameter trees have the symbols from `association` and its body is `body`
     * (which may have another type than the lambda the symbols come from); its result type is `Any`, so the reduction does not
     * insert a cast of the result.
+    *
+    * A substitute which is not an identifier is bound to a val before the body and evaluated once, as the symbol it replaces (a
+    * val or a parameter). The reduction would bind it too, but would not change the owner of the definitions inside it.
     */
   def changeSymsInTerm(using
       Quotes
@@ -100,14 +122,20 @@ object TransformUtil:
       owner: quotes.reflect.Symbol
   ): quotes.reflect.Term = {
     import quotes.reflect._
-    if (association.isEmpty) then body
+    if (association.isEmpty) then body.changeOwner(owner)
     else
       val (syms, values) = association.toList.unzip
-      val args = values.map {
-        case arg: Term => arg
-        case other =>
-          throw MacroError(s"term expected for substitution of a symbol, we have ${other}", body.asExpr)
-      }
+      val (bindings, args) = syms
+        .zip(values)
+        .map {
+          case (_, arg: Ident) => (None, arg)
+          case (sym, arg: Term) =>
+            val bindingSym = Symbol.newVal(owner, sym.name, arg.tpe.widen, Flags.Synthetic, Symbol.noSymbol)
+            (Some(ValDef(bindingSym, Some(arg.changeOwner(bindingSym)))), Ref(bindingSym))
+          case (_, other) =>
+            throw MacroError(s"term expected for substitution of a symbol, we have ${other}", body.asExpr)
+        }
+        .unzip
       // ValDef(sym, None) has the declared type of sym as tpt
       val params = syms.map(sym => ValDef(sym, None))
       val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => TypeRepr.of[Any])
@@ -125,7 +153,8 @@ object TransformUtil:
             case Block(Nil, expr) => expr
             case other            => other
           // the definitions are owned by the owner of the macro expansion after the reduction
-          unwrapped.changeOwner(owner)
+          val result = unwrapped.changeOwner(owner)
+          if (bindings.forall(_.isEmpty)) then result else Block(bindings.flatten, result)
         case None =>
           throw MacroError(s"Internal error: can't substitute ${syms.mkString(",")} in the body", body.asExpr)
   }
