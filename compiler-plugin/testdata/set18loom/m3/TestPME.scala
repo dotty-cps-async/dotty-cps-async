@@ -104,8 +104,9 @@ object PoorManEffect {
     override def submit[T](pe: PoorManEffect[T]): Long =  {
       val id = nextId
       //runQueue.enqueue(EvalRecord(pe,id))
-      runQueue.add(EvalRecord(pe,id))
+      // register the waiter before the effect is queued: a carrier can complete it at once
       waiters(id) = new CompletableFuture[Any]()
+      runQueue.add(EvalRecord(pe,id))
       submitWaiter.synchronized {
         submitWaiter.notifyAll()
       }
