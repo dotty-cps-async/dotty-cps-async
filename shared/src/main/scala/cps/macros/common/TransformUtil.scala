@@ -34,7 +34,7 @@ object TransformUtil:
     changeSymsInTerm(assoc, body, owner)
 
   /** Method type of a lambda rebuilt from the original lambda with parameters `params`: references to these parameters in
-    * `paramTypes` and `resultType` (a type of the original body, as `n.Child` for a parameter `n`) are replaced by the parameters
+    * their types and in `resultType` (a type of the original body, as `n.Child` for a parameter `n`) are replaced by the parameters
     * of the new method type, as in the body after [[substituteLambdaParams]]. Otherwise the result type of the new lambda would
     * refer to the parameter of the original one (https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
     */
@@ -43,14 +43,13 @@ object TransformUtil:
   )(
       kind: quotes.reflect.MethodTypeKind,
       params: List[quotes.reflect.ValDef],
-      paramTypes: List[quotes.reflect.TypeRepr],
       resultType: quotes.reflect.TypeRepr
   ): quotes.reflect.MethodType =
     import quotes.reflect._
     val syms = params.map(_.symbol)
     def subst(mt: MethodType, tp: TypeRepr): TypeRepr =
       tp.substituteTypes(syms, syms.indices.toList.map(mt.param))
-    MethodType(kind)(params.map(_.name))(mt => paramTypes.map(subst(mt, _)), mt => subst(mt, resultType))
+    MethodType(kind)(params.map(_.name))(mt => params.map(p => subst(mt, p.tpt.tpe)), mt => subst(mt, resultType))
 
   /** Build a lambda with one parameter as context function `(p: A) ?=> R` and cast it to `A => R` (both are erased to
     * `Function1`).
@@ -111,8 +110,8 @@ object TransformUtil:
     * (which may have another type than the lambda the symbols come from); its result type is `Any`, so the reduction does not
     * insert a cast of the result.
     *
-    * A substitute which is not an identifier is bound to a val before the body and evaluated once, as the symbol it replaces (a
-    * val or a parameter). The reduction would bind it too, but would not change the owner of the definitions inside it.
+    * A substitute which is not an identifier is put in place of each reference to its symbol (it is not a path, so types do not
+    * refer to it), as by the TreeMap which was used before.
     */
   def changeSymsInTerm(using
       Quotes
@@ -122,50 +121,75 @@ object TransformUtil:
       owner: quotes.reflect.Symbol
   ): quotes.reflect.Term = {
     import quotes.reflect._
-    if (association.isEmpty) then body.changeOwner(owner)
-    else
-      val (syms, values) = association.toList.unzip
-      val (bindings, args) = syms
-        .zip(values)
-        .map {
-          case (_, arg: Ident) => (None, arg)
-          case (sym, arg: Term) =>
-            val bindingSym = Symbol.newVal(owner, sym.name, arg.tpe.widen, Flags.Synthetic, Symbol.noSymbol)
-            (Some(ValDef(bindingSym, Some(arg.changeOwner(bindingSym)))), Ref(bindingSym))
-          case (_, other) =>
-            throw MacroError(s"term expected for substitution of a symbol, we have ${other}", body.asExpr)
-        }
-        .unzip
-      // ValDef(sym, None) has the declared type of sym as tpt
-      val params = syms.map(sym => ValDef(sym, None))
-      val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => TypeRepr.of[Any])
-      val lambda = Lambda(owner, mt, (_, _) => Literal(NullConstant())) match
-        case block @ Block(List(ddef: DefDef), closure) =>
-          // the result of the reduction receives the position of the application, so we wrap the body to keep its position
-          val wrappedBody = Block(Nil, body.changeOwner(ddef.symbol))
-          val nDdef = DefDef.copy(ddef)(ddef.name, List(TermParamClause(params)), ddef.returnTpt, Some(wrappedBody))
-          Block.copy(block)(List(nDdef), closure)
-        case other =>
-          throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", body.asExpr)
-      val redex = Apply(Select.unique(lambda, "apply"), args)
-      // the reduction gives the definitions of the lambda body to the owner of its context: when `owner` is inside the splice
-      // owner, the reduction runs with `owner` as the context owner, otherwise the owner is changed after it
-      val reduced =
-        if (isInside(owner, Symbol.spliceOwner)) then
-          val ownerQuotes = owner.asQuotes
-          ownerQuotes.reflect.Term
-            .betaReduce(redex.asInstanceOf[ownerQuotes.reflect.Term])
-            .map(_.asInstanceOf[Term])
-        else Term.betaReduce(redex).map(_.changeOwner(owner))
-      reduced match
-        case Some(reduced) =>
-          val result = reduced match
-            case Block(Nil, expr) => expr
-            case other            => other
-          if (bindings.forall(_.isEmpty)) then result else Block(bindings.flatten, result)
-        case None =>
-          throw MacroError(s"Internal error: can't substitute ${syms.mkString(",")} in the body", body.asExpr)
+    association.values.foreach {
+      case _: Term => ()
+      case other   => throw MacroError(s"term expected for substitution of a symbol, we have ${other}", body.asExpr)
+    }
+    val (refs, others) = association.partition {
+      case (_, _: Ident) => true
+      case _             => false
+    }
+    val reduced = if (refs.isEmpty) then body.changeOwner(owner) else betaReduceSubstitution(refs, body, owner)
+    if (others.isEmpty) then reduced else replaceRefs(others, reduced, owner)
   }
+
+  /** Substitute symbols by identifiers with `Term.betaReduce`, see [[changeSymsInTerm]]. */
+  private def betaReduceSubstitution(using
+      Quotes
+  )(
+      association: Map[quotes.reflect.Symbol, quotes.reflect.Tree],
+      body: quotes.reflect.Term,
+      owner: quotes.reflect.Symbol
+  ): quotes.reflect.Term =
+    import quotes.reflect._
+    val (syms, args) = association.toList.unzip
+    // ValDef(sym, None) has the declared type of sym as tpt
+    val params = syms.map(sym => ValDef(sym, None))
+    val mt = MethodType(params.map(_.name))(_ => params.map(_.tpt.tpe), _ => TypeRepr.of[Any])
+    val lambda = Lambda(owner, mt, (_, _) => Literal(NullConstant())) match
+      case block @ Block(List(ddef: DefDef), closure) =>
+        // the result of the reduction receives the position of the application, so we wrap the body to keep its position
+        val wrappedBody = Block(Nil, body.changeOwner(ddef.symbol))
+        val nDdef = DefDef.copy(ddef)(ddef.name, List(TermParamClause(params)), ddef.returnTpt, Some(wrappedBody))
+        Block.copy(block)(List(nDdef), closure)
+      case other =>
+        throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", body.asExpr)
+    val redex = Apply(Select.unique(lambda, "apply"), args.map(_.asInstanceOf[Term]))
+    // the reduction gives the definitions of the lambda body to the owner of its context: when `owner` is inside the splice
+    // owner, the reduction runs with `owner` as the context owner, otherwise the owner is changed after it
+    val reduced =
+      if (isInside(owner, Symbol.spliceOwner)) then
+        val ownerQuotes = owner.asQuotes
+        ownerQuotes.reflect.Term
+          .betaReduce(redex.asInstanceOf[ownerQuotes.reflect.Term])
+          .map(_.asInstanceOf[Term])
+      else Term.betaReduce(redex).map(_.changeOwner(owner))
+    reduced match
+      case Some(Block(Nil, expr)) => expr
+      case Some(other)            => other
+      case None =>
+        throw MacroError(s"Internal error: can't substitute ${syms.mkString(",")} in the body", body.asExpr)
+
+  /** Put the substitutes in place of the references to the symbols, with the definitions inside a substitute owned by the owner
+    * at its place.
+    */
+  private def replaceRefs(using
+      qctx: Quotes
+  )(
+      association: Map[qctx.reflect.Symbol, qctx.reflect.Tree],
+      body: qctx.reflect.Term,
+      owner: qctx.reflect.Symbol
+  ): qctx.reflect.Term =
+    import qctx.reflect._
+    val scope = MacroReflectScopeInstance[qctx.type]
+    val replacer = new scope.PatternAwareTreeMap {
+      override def transformTerm(tree: Term)(owner: Symbol): Term =
+        tree match
+          case id: Ident if association.contains(id.symbol) =>
+            association(id.symbol).asInstanceOf[Term].changeOwner(owner)
+          case _ => super.transformTerm(tree)(owner)
+    }
+    replacer.transformTerm(body)(owner)
 
   /** `sym` is `owner` or is (transitively) owned by `owner`. */
   private def isInside(using Quotes)(sym: quotes.reflect.Symbol, owner: quotes.reflect.Symbol): Boolean =

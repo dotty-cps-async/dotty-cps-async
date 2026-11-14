@@ -45,13 +45,25 @@ object TransformUtil {
       ).apply(term)
   }
 
-  def makeLambda(params: List[ValDef], resultType: Type, owner: Symbol, body: Tree, bodyOwner: Symbol)(using Context): Block = {
-    val paramNames = params.map(_.name)
-    val paramTypes = params.map(_.tpe.widen)
-    val mt = MethodType(paramNames)(
-      x => paramTypes,
-      x => resultType
+  /** Method type of a lambda rebuilt from a lambda with the parameters `params`: references to these parameters in `paramTypes`
+    * and `resultType` (types of the original body, as `n.Child` for a parameter `n`) become the parameters of the new method
+    * type, as in the body after [[substParams]] (https://github.com/dotty-cps-async/dotty-cps-async/issues/150).
+    */
+  def lambdaMethodType(
+      params: List[ValDef],
+      paramTypes: List[Type],
+      resultType: Type,
+      companion: MethodTypeCompanion = MethodType
+  )(using Context): MethodType = {
+    val syms = params.map(_.symbol)
+    companion(params.map(_.name))(
+      mt => paramTypes.map(_.subst(syms, mt.paramRefs)),
+      mt => resultType.subst(syms, mt.paramRefs)
     )
+  }
+
+  def makeLambda(params: List[ValDef], resultType: Type, owner: Symbol, body: Tree, bodyOwner: Symbol)(using Context): Block = {
+    val mt = lambdaMethodType(params, params.map(_.tpe.widen), resultType)
     val meth = Symbols.newAnonFun(owner, mt)
     val retval = Closure(
       meth,

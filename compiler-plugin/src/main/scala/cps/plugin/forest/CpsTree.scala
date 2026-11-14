@@ -830,9 +830,10 @@ case class LambdaCpsTree(
       case AsyncKind.Async(internal) =>
         val awaitMethod = Select(runtimeAwait, "await".toTermName)
         // TODO: write a test, when originType is a SAM type
-        val mt = MethodType(originDefDef.termParamss.head.map(_.name))(
-          _ => originDefDef.termParamss.head.map(_.tpe.widen),
-          _ => cpsBody.originType.widen
+        val mt = TransformUtil.lambdaMethodType(
+          originParams,
+          originParams.map(_.tpe.widen),
+          cpsBody.originType.widen
         )
         val meth = Symbols.newAnonFun(owner, mt)
         val closure = Closure(
@@ -872,16 +873,9 @@ case class LambdaCpsTree(
 
   private def createShiftedType()(using Context, CpsTopLevelContext): Type = {
     val params = originDefDef.termParamss.head
-    val paramNames = params.map(_.name)
-    val paramTypes = params.map(_.tpe.widen)
-
     val retval = if (originDefDef.tpe <:< defn.PartialFunctionOf(WildcardType, WildcardType)) {
       ???
-    } else
-      MethodType(paramNames)(
-        x => paramTypes,
-        x => cpsBody.transformedType.widen
-      )
+    } else TransformUtil.lambdaMethodType(params, params.map(_.tpe.widen), cpsBody.transformedType.widen)
     retval
   }
 

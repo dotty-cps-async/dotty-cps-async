@@ -280,13 +280,12 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         shiftedArgExpr(existsAsync, shiftType, term.tpe, params, body)
       else if (shouldBeChangedSync) then
         val (params, body) = extractParamsAndBody()
-        val paramTypes = params.map(_.tpt.tpe)
         val methodKind =
           if (term.tpe.isContextFunctionType && !allowUncontext) MethodTypeKind.Contextual else MethodTypeKind.Plain
         cpsBody.syncOrigin match
           case Some(syncBody) =>
             if (cpsBody.isChanged) then
-              val mt = TransformUtil.lambdaMethodType(methodKind, params, paramTypes, lambdaResultType(syncBody.tpe.widen))
+              val mt = TransformUtil.lambdaMethodType(methodKind, params, lambdaResultType(syncBody.tpe.widen))
               rebuildLambda(mt, params, syncBody)
             else term
           case None =>
@@ -302,7 +301,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
                   val nBody = topMatch(cpsBody.transformed) match
                     case Some(m) if isPartialFunction => mapCases(m, flatten)
                     case _                            => flatten(cpsBody.transformed)
-                  val mt = TransformUtil.lambdaMethodType(methodKind, params, paramTypes, lambdaResultType(body.tpe.widen))
+                  val mt = TransformUtil.lambdaMethodType(methodKind, params, lambdaResultType(body.tpe.widen))
                   rebuildLambda(mt, params, nBody)
                 case _ =>
                   throw MacroError(s"F[?] expected, we have ${body.tpe.widen.show}", term.asExpr)
@@ -478,9 +477,6 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
     private def changeArgs(params: List[ValDef], nParams: List[Tree], body: Term, owner: Symbol): Term =
       TransformUtil.substituteLambdaParams(params, nParams, body, owner)
-
-    private def changeIdent(body: Term, oldSym: Symbol, newSym: Symbol, owner: Symbol): Term =
-      TransformUtil.changeSymsInTerm(Map(oldSym -> Ref(newSym)), body, owner)
 
   }
 

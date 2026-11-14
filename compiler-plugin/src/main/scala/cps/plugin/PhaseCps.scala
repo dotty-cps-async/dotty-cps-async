@@ -298,11 +298,13 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
     val nRhsCps = RootTransform(ddef.rhs, ddef.symbol, 0)(using ddefCtx, tctx)
     val nRhsTerm = wrapTopLevelCpsTree(nRhsCps)(using ddefCtx, tctx)
     val nRhsType = nRhsTerm.tpe.widen
-    val mt = if (contextual) {
-      ContextualMethodType(ddef.paramss.head.map(_.name.toTermName))(_ => ddef.paramss.head.map(_.tpe.widen), _ => nRhsType)
-    } else {
-      MethodType(ddef.paramss.head.map(_.name.toTermName))(_ => ddef.paramss.head.map(_.tpe.widen), _ => nRhsType)
-    }
+    val params = ddef.paramss.head.asInstanceOf[List[ValDef]]
+    val mt = TransformUtil.lambdaMethodType(
+      params,
+      params.map(_.tpe.widen),
+      nRhsType,
+      if (contextual) ContextualMethodType else MethodType
+    )
     val newSym = Symbols.newAnonFun(ctx.owner, mt, ddef.span)
     val nDefDef = DefDef(
       newSym,
@@ -358,10 +360,8 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
         val ctxValDef = ddef.paramss.head.head
         val ctxRef = ref(ctxValDef.symbol)
         val nInternalLambda = transformDefDef2InsideCpsAsyncStreamApply(ddef.rhs, ctxRef)(using ctx.withOwner(ddef.symbol))
-        val mt = MethodType(ddef.paramss.head.map(_.name.toTermName))(
-          _ => ddef.paramss.head.map(_.typeOpt.widen),
-          _ => nInternalLambda.tpe.widen
-        )
+        val params = ddef.paramss.head.asInstanceOf[List[ValDef]]
+        val mt = TransformUtil.lambdaMethodType(params, params.map(_.typeOpt.widen), nInternalLambda.tpe.widen)
         val newSym = Symbols.newAnonFun(owner, mt, ddef.span)
         val nDefDef = DefDef(
           newSym,
@@ -394,8 +394,8 @@ class PhaseCps(settings: CpsPluginSettings, selectedNodes: SelectedNodes) extend
         val nRhsCps = RootTransform(ddef.rhs, ddef.symbol, 0)(using ddefContext, tctx)
         val nRhs =
           Block(monadValDef.changeOwner(monadValDef.symbol.owner, ddef.symbol) :: Nil, nRhsCps.transformed(using ddefContext, tctx))
-        val mt =
-          MethodType(ddef.paramss.head.map(_.name.toTermName))(_ => ddef.paramss.head.map(_.typeOpt.widen), _ => nRhs.tpe.widen)
+        val params = ddef.paramss.head.asInstanceOf[List[ValDef]]
+        val mt = TransformUtil.lambdaMethodType(params, params.map(_.typeOpt.widen), nRhs.tpe.widen)
         val newSym = Symbols.newAnonFun(ctx.owner, mt, ddef.span)
         val nDefDef = DefDef(
           newSym,
