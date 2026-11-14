@@ -335,7 +335,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       * type.
       */
     private def rebuildLambda(mt: MethodType, params: List[ValDef], nBody: Term): Term =
-      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      val lambda = Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner))
       originClosureType match
         case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)
         case None           => lambda
@@ -459,7 +459,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncPartialFunction", posExprs(term))
       val mt = MethodType(params.map(_.name))(_ => List(from), _ => resType)
-      val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner).changeOwner(owner))
+      val lambda = Lambda(Symbol.spliceOwner, mt, (owner, args) => changeArgs(params, args, nMatch, owner))
       TransformUtil.withClosureType(lambda, partialFunctionType.appliedTo(List(from, resType)))
 
     private def createAsyncLambda(mt: MethodType, params: List[ValDef], shiftType: ApplicationShiftType, owner: Symbol): Term =
@@ -474,7 +474,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
               throw MacroError("Internal error: optRuntimeAwait should be defined", posExprs(term))
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
           throw MacroError("Internal error: with CPS_DEFERR_TO_PLUGIN we should not call createAsyncLambda ", term.asExpr)
-      Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner).changeOwner(owner))
+      Lambda(owner, mt, (owner, args) => changeArgs(params, args, nBody, owner))
 
     private def changeArgs(params: List[ValDef], nParams: List[Tree], body: Term, owner: Symbol): Term =
       TransformUtil.substituteLambdaParams(params, nParams, body, owner)

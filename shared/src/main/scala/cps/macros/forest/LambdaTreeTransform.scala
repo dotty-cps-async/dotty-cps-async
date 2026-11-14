@@ -41,7 +41,7 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       val lambda = Lambda(
         owner,
         mt,
-        (owner, args) => TransformUtil.substituteLambdaParams(params, args, changedBody, owner).changeOwner(owner)
+        (owner, args) => TransformUtil.substituteLambdaParams(params, args, changedBody, owner)
       )
       val newLambda = closureType match
         case Some((tpe, _)) => TransformUtil.withClosureType(lambda, tpe)

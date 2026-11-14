@@ -213,9 +213,9 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                                 Symbol.spliceOwner,
                                 mt,
                                 (owner, args) =>
-                                  (if inlineProxies then TransformUtil.substituteLambdaParams(params, args, body, owner)
-                                   else Apply(Select.unique(Ref(binding.newSym), "apply"), args.map(_.asInstanceOf[Term])))
-                                    .changeOwner(owner)
+                                  // the substitution gives the definitions to `owner`, the application has no definitions
+                                  if inlineProxies then TransformUtil.substituteLambdaParams(params, args, body, owner)
+                                  else Apply(Select.unique(Ref(binding.newSym), "apply"), args.map(_.asInstanceOf[Term]))
                               )
                             case _ =>
                               throw MacroError("Lambda in rhs expected", posExprs(rhs))

@@ -147,17 +147,32 @@ object TransformUtil:
           Block.copy(block)(List(nDdef), closure)
         case other =>
           throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", body.asExpr)
-      Term.betaReduce(Apply(Select.unique(lambda, "apply"), args)) match
+      val redex = Apply(Select.unique(lambda, "apply"), args)
+      // the reduction gives the definitions of the lambda body to the owner of its context: when `owner` is inside the splice
+      // owner, the reduction runs with `owner` as the context owner, otherwise the owner is changed after it
+      val reduced =
+        if (isInside(owner, Symbol.spliceOwner)) then
+          val ownerQuotes = owner.asQuotes
+          ownerQuotes.reflect.Term
+            .betaReduce(redex.asInstanceOf[ownerQuotes.reflect.Term])
+            .map(_.asInstanceOf[Term])
+        else Term.betaReduce(redex).map(_.changeOwner(owner))
+      reduced match
         case Some(reduced) =>
-          val unwrapped = reduced match
+          val result = reduced match
             case Block(Nil, expr) => expr
             case other            => other
-          // the definitions are owned by the owner of the macro expansion after the reduction
-          val result = unwrapped.changeOwner(owner)
           if (bindings.forall(_.isEmpty)) then result else Block(bindings.flatten, result)
         case None =>
           throw MacroError(s"Internal error: can't substitute ${syms.mkString(",")} in the body", body.asExpr)
   }
+
+  /** `sym` is `owner` or is (transitively) owned by `owner`. */
+  private def isInside(using Quotes)(sym: quotes.reflect.Symbol, owner: quotes.reflect.Symbol): Boolean =
+    import quotes.reflect._
+    var current = sym
+    while (current != owner && current != Symbol.noSymbol) do current = current.maybeOwner
+    current == owner
 
   /** The closure type of a lambda `Block(List(DefDef), Closure(meth, tpt))`, defined for a SAM type (also for a partial
     * function), with the result type of its method. A rebuilt lambda should keep them: `Lambda(...)` builds a function closure,

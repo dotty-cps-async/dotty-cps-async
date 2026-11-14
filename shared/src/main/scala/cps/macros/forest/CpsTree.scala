@@ -779,7 +779,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
           //  TODO: always pass mapping between new symbols as parameters to transformed
           if (cpsCtx.flags.debugLevel >= 15)
             cpsCtx.log(s"generate rLambda: params in lambda-arg = ${args}")
-          TransformUtil.substituteLambdaParams(params, args, body.transformed, owner).changeOwner(owner)
+          TransformUtil.substituteLambdaParams(params, args, body.transformed, owner)
         }
       )
 
