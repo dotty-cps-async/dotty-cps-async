@@ -20,12 +20,13 @@ object AssignTransform {
             val qual = lhsQual.unpure.get
             val cpsRhs = RootTransform(term.rhs, owner, nesting)
             cpsRhs.asyncKind match
-              case AsyncKind.Async(_) if !isStablePath(qual, allowLazy = false) =>
+              case AsyncKind.Async(_) if !isPurePath(qual) =>
                 // the qualifier is evaluated before the right part: `{ val q = qual; rhs.map(x => q.f = x) }`.
-                // A stable path through a lazy val keeps its singleton type: the type of the field can depend on it.
-                val qualType = if (isStablePath(qual, allowLazy = true)) then qual.tpe else qual.tpe.widen
+                // A path through a lazy val or an object with an initializer keeps its singleton type: the type of the field can depend
+                // on it. Otherwise only singleton term references are widened (as `widenTermRefByName` in the macro): `this.type` stays.
+                val qualType = if (isIdempotentPath(qual)) then qual.tpe else qual.tpe.widenTermRefExpr
                 val qualSym = newSymbol(owner, "xQualAssign".toTermName, Flags.EmptyFlags, qualType, NoSymbol)
-                val qualValDef = ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym))
+                val qualValDef = ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym)).withSpan(sel.qualifier.span)
                 val lhs = ref(qualSym).select(sel.symbol).withSpan(sel.span)
                 BlockBoundsCpsTree(
                   SeqCpsTree(term, owner, IndexedSeq(MemberDefCpsTree(term, owner, qualValDef)), lhsSyncAssign(term, lhs, cpsRhs, owner))
@@ -46,20 +47,6 @@ object AssignTransform {
             throw CpsTransformException(s"Impossible: async assignmebt which is not select, $cpsLhs", term.srcPos)
           case AsyncKind.AsyncLambda(body) =>
             throw CpsTransformException(s"Can't assign value to async lambda", term.srcPos)
-  }
-
-  /** `this`, `super`, or a selection of a non-lazy val or an object from a stable path: evaluating it after the right part gives the same
-    * value without other effects. (A var, a lazy val, a by-name parameter or a method call is evaluated before the right part.) With
-    * `allowLazy`, lazy vals are accepted too: a stable path, but its evaluation can initialize a lazy val.
-    */
-  private def isStablePath(tree: Tree, allowLazy: Boolean)(using Context): Boolean = {
-    def isStableSymbol(sym: Symbol): Boolean =
-      sym.isStableMember && (allowLazy || !sym.is(Flags.Lazy) || sym.is(Flags.Module))
-    tree match
-      case This(_) | Super(_, _) => true
-      case Ident(_)              => isStableSymbol(tree.symbol)
-      case Select(qual, _)       => isStableSymbol(tree.symbol) && isStablePath(qual, allowLazy)
-      case _                     => false
   }
 
   def lhsSyncAssign(term: Assign, lhs: Tree, cpsRhs: CpsTree, owner: Symbol)(using Context, CpsTopLevelContext): CpsTree = {

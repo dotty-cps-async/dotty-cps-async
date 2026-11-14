@@ -96,6 +96,26 @@ class TestAssignQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the qualifier is an object with an initializer: it is initialized before the right part
+  @Test def testObjectQualifierInitialization() = {
+    val c = async[Future] {
+      InitLoggedObject.n = await({ objectLog += "right"; Future.successful(1) })
+      assert(objectLog.toList == List("init", "right"), s"log=$objectLog")
+      assert(InitLoggedObject.n == 1, s"n=${InitLoggedObject.n}")
+    }
+    FutureCompleter(c)
+  }
+
+  // the qualifier is a method call with a `this.type` result, the type of the field depends on it
+  @Test def testThisTypedMethodCallQualifierPathDependentField() = {
+    val b = intSelfBox(5)
+    val c = async[Future] {
+      await(b.assignSelf())
+      assert(b.v == 5, s"b.v=${b.v}")
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier is changed by the transformation (an inner lambda is unshifted), but sync
   @Test def testChangedSyncQualifier() = {
     val log = ArrayBuffer[String]()
@@ -147,6 +167,30 @@ object TestAssignQualifierEvaluationOrder {
 
   object HolderObject {
     var n: Int = 0
+  }
+
+  // only `testObjectQualifierInitialization` touches InitLoggedObject
+  val objectLog = ArrayBuffer[String]()
+
+  object InitLoggedObject {
+    objectLog += "init"
+    var n: Int = 0
+  }
+
+  abstract class SelfBox {
+    type T
+    var v: T
+    def mk: T
+    def self(): this.type = this
+    def assignSelf(): Future[Unit] = async[Future] {
+      self().v = await(Future.successful(mk))
+    }
+  }
+
+  def intSelfBox(x: Int): SelfBox = new SelfBox {
+    type T = Int
+    var v: Int = 0
+    def mk: Int = x
   }
 
   class ByNameRef(h: => Holder, log: ArrayBuffer[String]) {
