@@ -396,7 +396,7 @@ object Async {
       val transformed = transformImpl[F, T, C](preprocessedExpr, Ref(oldValDef.symbol).asExprOf[C])
       val nLambda = TransformUtil.contextLambdaAsFunction(Symbol.spliceOwner, oldValDef.name, oldValDef.tpt.tpe, TypeRepr.of[F[T]]) {
         (owner, params) =>
-          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner)
       }
       nestFun(nLambda)
 
@@ -427,7 +427,7 @@ object Async {
       val transformed = transformImpl[F, T, C](bodyExpr, Ref(oldValDef.symbol).asExprOf[C])
       val nLambda = TransformUtil.contextLambdaAsFunction(Symbol.spliceOwner, oldValDef.name, oldValDef.tpt.tpe, TypeRepr.of[F[T]]) {
         (owner, params) =>
-          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner).changeOwner(owner)
+          TransformUtil.substituteLambdaParams(oldParams, params, transformed.asTerm, owner)
       }
       nestFun(nLambda)
 
