@@ -18,8 +18,21 @@ object AssignTransform {
           case AsyncKind.Sync =>
             // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
             val qual = lhsQual.unpure.get
-            val lhs = if (qual eq sel.qualifier) then term.lhs else qual.select(sel.symbol).withSpan(sel.span)
-            lhsSyncAssign(term, lhs, owner, nesting)
+            val cpsRhs = RootTransform(term.rhs, owner, nesting)
+            cpsRhs.asyncKind match
+              case AsyncKind.Async(_) if !isStablePath(qual, allowLazy = false) =>
+                // the qualifier is evaluated before the right part: `{ val q = qual; rhs.map(x => q.f = x) }`.
+                // A stable path through a lazy val keeps its singleton type: the type of the field can depend on it.
+                val qualType = if (isStablePath(qual, allowLazy = true)) then qual.tpe else qual.tpe.widen
+                val qualSym = newSymbol(owner, "xQualAssign".toTermName, Flags.EmptyFlags, qualType, NoSymbol)
+                val qualValDef = ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym))
+                val lhs = ref(qualSym).select(sel.symbol).withSpan(sel.span)
+                BlockBoundsCpsTree(
+                  SeqCpsTree(term, owner, IndexedSeq(MemberDefCpsTree(term, owner, qualValDef)), lhsSyncAssign(term, lhs, cpsRhs, owner))
+                )
+              case _ =>
+                val lhs = if (qual eq sel.qualifier) then term.lhs else qual.select(sel.symbol).withSpan(sel.span)
+                lhsSyncAssign(term, lhs, cpsRhs, owner)
           case AsyncKind.Async(internalKind) =>
             lhsSelectAsyncAssign(term, sel, lhsQual, owner, nesting)
           case AsyncKind.AsyncLambda(body) =>
@@ -28,15 +41,28 @@ object AssignTransform {
         val cpsLhs = RootTransform(term.lhs, owner, nesting)
         cpsLhs.asyncKind match
           case AsyncKind.Sync =>
-            lhsSyncAssign(term, term.lhs, owner, nesting)
+            lhsSyncAssign(term, term.lhs, RootTransform(term.rhs, owner, nesting), owner)
           case AsyncKind.Async(internalKind) =>
             throw CpsTransformException(s"Impossible: async assignmebt which is not select, $cpsLhs", term.srcPos)
           case AsyncKind.AsyncLambda(body) =>
             throw CpsTransformException(s"Can't assign value to async lambda", term.srcPos)
   }
 
-  def lhsSyncAssign(term: Assign, lhs: Tree, owner: Symbol, nesting: Int)(using Context, CpsTopLevelContext): CpsTree = {
-    val cpsRhs = RootTransform(term.rhs, owner, nesting)
+  /** `this`, `super`, or a selection of a non-lazy val or an object from a stable path: evaluating it after the right part gives the same
+    * value without other effects. (A var, a lazy val, a by-name parameter or a method call is evaluated before the right part.) With
+    * `allowLazy`, lazy vals are accepted too: a stable path, but its evaluation can initialize a lazy val.
+    */
+  private def isStablePath(tree: Tree, allowLazy: Boolean)(using Context): Boolean = {
+    def isStableSymbol(sym: Symbol): Boolean =
+      sym.isStableMember && (allowLazy || !sym.is(Flags.Lazy) || sym.is(Flags.Module))
+    tree match
+      case This(_) | Super(_, _) => true
+      case Ident(_)              => isStableSymbol(tree.symbol)
+      case Select(qual, _)       => isStableSymbol(tree.symbol) && isStablePath(qual, allowLazy)
+      case _                     => false
+  }
+
+  def lhsSyncAssign(term: Assign, lhs: Tree, cpsRhs: CpsTree, owner: Symbol)(using Context, CpsTopLevelContext): CpsTree = {
     cpsRhs.asyncKind match
       case AsyncKind.Sync =>
         val rhs = cpsRhs.unpure.get

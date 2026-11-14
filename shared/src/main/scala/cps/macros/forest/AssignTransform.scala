@@ -27,11 +27,59 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
                 if (cpsObj.isAsync) then runAsyncQualifier(left, cpsObj, right, cpsRight)
                 else
                   // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
-                  val syncLeft = if (cpsObj.isChanged) then cpsObj.syncOrigin.get.asTerm.select(left.symbol) else left
-                  runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
+                  val syncObj = if (cpsObj.isChanged) then cpsObj.syncOrigin.get.asTerm else obj
+                  if (cpsRight.isAsync && !isStablePath(syncObj, allowLazy = false)) then
+                    // the qualifier is evaluated before the right part: `{ val q = obj; right.map(x => q.f = x) }`.
+                    // A stable path through a lazy val keeps its singleton type: the type of the field can depend on it.
+                    val qualType = if (isStablePath(syncObj, allowLazy = true)) then syncObj.tpe else TypeRepr.of[o]
+                    val qualSym = Symbol.newVal(Symbol.spliceOwner, "xQualAssign", qualType, Flags.EmptyFlags, Symbol.noSymbol)
+                    val qualValDef = ValDef(qualSym, Some(syncObj.changeOwner(qualSym)))
+                    runSyncLeft(Ref(qualSym).select(left.symbol), true, right, cpsRight)
+                      .prependExprs(Seq(StatementExprTreeGen(qualValDef, true)))
+                  else
+                    val syncLeft = if (cpsObj.isChanged) then syncObj.select(left.symbol) else left
+                    runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
           case _ =>
             // an identifier (a local variable or a field of the enclosing class): nothing to transform
             runSyncLeft(left, false, right, cpsRight)
+
+  /** `this`, `super`, or a selection of a non-lazy val or an object from a stable path: evaluating it after the right part gives the same
+    * value without other effects. (A var, a lazy val, a by-name parameter or a method call is evaluated before the right part.) With
+    * `allowLazy`, lazy vals are accepted too: a stable path, but its evaluation can initialize a lazy val.
+    */
+  private def isStablePath(using Quotes)(term: quotes.reflect.Term, allowLazy: Boolean): Boolean =
+    import quotes.reflect._
+    // the reference itself has a TermRef type; the declared type of a by-name parameter is a by-name type.
+    // (`Symbol.info` is experimental, `NoPrefix.memberType` fails: a method parameter's type is taken from the method type,
+    // as in MethodParamsDescriptor.isByName)
+    def methodParamType(sym: Symbol): Option[TypeRepr] =
+      def find(tpe: TypeRepr): Option[TypeRepr] = tpe match
+        case mt: MethodType =>
+          mt.paramNames.indexOf(sym.name) match
+            case -1 => find(mt.resType)
+            case i  => Some(mt.paramTypes(i))
+        case pt: PolyType => find(pt.resType)
+        case _            => None
+      find(sym.owner.termRef.widen)
+    def isByName: Boolean =
+      val declaredType = term.tpe match
+        case TermRef(prefix, _) =>
+          prefix match
+            case NoPrefix() => if (term.symbol.flags.is(Flags.Param)) then methodParamType(term.symbol) else None
+            case _          => Some(prefix.memberType(term.symbol))
+        case _ => None
+      declaredType match
+        case Some(ByNameType(_)) => true
+        case _                   => false
+    def isStableRef: Boolean =
+      val flags = term.symbol.flags
+      !flags.is(Flags.Mutable) && !flags.is(Flags.Method)
+        && (allowLazy || !flags.is(Flags.Lazy) || flags.is(Flags.Module)) && !isByName
+    term match
+      case This(_) | Super(_, _) => true
+      case Ident(_)              => isStableRef
+      case Select(qual, _)       => isStableRef && isStablePath(qual, allowLazy)
+      case _                     => false
 
   private def runSyncLeft[R: Type](using
       Quotes
