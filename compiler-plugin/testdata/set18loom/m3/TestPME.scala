@@ -103,9 +103,9 @@ object PoorManEffect {
 
     override def submit[T](pe: PoorManEffect[T]): Long =  {
       val id = nextId
-      //runQueue.enqueue(EvalRecord(pe,id))
-      runQueue.add(EvalRecord(pe,id))
+      // register the waiter before the effect is queued: a carrier can complete it at once
       waiters(id) = new CompletableFuture[Any]()
+      runQueue.add(EvalRecord(pe,id))
       submitWaiter.synchronized {
         submitWaiter.notifyAll()
       }
@@ -273,11 +273,9 @@ object PoorManEffect {
                      case ex: ExecutionException =>
                        throw ex.getCause()
                      case te: TimeoutException =>
-                       if (runner.processEntryCounter.get() == 0)
+                       // while a carrier runs, the result can come at any time; without a carrier it is lost
+                       if (runner.processEntryCounter.get() == 0 && !resultFuture.isDone)
                          throw new RuntimeException(s"process finished, but no result for id ${id0}")
-                       else
-                         println(s"timeout waiting for id ${id0}")
-                         throw new RuntimeException(s"timeout for id ${id0}")
                  }
                }
                if (resultFuture.isCompletedExceptionally){
