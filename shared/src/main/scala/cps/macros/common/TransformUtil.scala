@@ -220,16 +220,22 @@ object TransformUtil:
         throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", lambda.asExpr)
 
   /** widen, which works over 'or' and 'and' types. (bug in dotty?)
+    *
+    * Singleton types of terms are widened (also inside a union), literal types are kept: Quotes does not show whether a union is
+    * soft (lub of branches, as `if c then "a" else "b"`) or written by the user (`val t: "a" | "b"`), and the second one can't be
+    * widened to `String` (#166).
     */
   def veryWiden(using qctx: Quotes)(tp: qctx.reflect.TypeRepr): qctx.reflect.TypeRepr =
     import quotes.reflect._
-    tp match
+    tp.widenTermRefByName match
       case OrType(lhs, rhs) =>
         val nLhs = veryWiden(lhs)
         val nRhs = veryWiden(rhs)
-        if (nLhs =:= nRhs) then nLhs
-        else OrType(veryWiden(lhs), veryWiden(rhs))
-      case other => tp.widen
+        if (nLhs <:< nRhs) then nRhs
+        else if (nRhs <:< nLhs) then nLhs
+        else OrType(nLhs, nRhs)
+      case constant @ ConstantType(_) => constant
+      case other                      => other.widen
 
   def ensureTyped(using qctx: Quotes)(term: qctx.reflect.Term, tp: qctx.reflect.TypeRepr): qctx.reflect.Term =
     import quotes.reflect._

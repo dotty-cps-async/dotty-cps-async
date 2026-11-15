@@ -348,7 +348,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def transformed: Term = {
       val untmapTerm = cpsCtx.monad.asTerm.select(mapSymbol)
-      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe.widen)
+      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe)
       val tmapTerm = untmapTerm.appliedToTypes(List(wPrevOtpe, otpe))
       val r = tmapTerm.appliedToArgss(
         List(

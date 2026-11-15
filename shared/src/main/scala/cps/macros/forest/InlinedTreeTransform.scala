@@ -32,7 +32,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       awaitVals: List[ValDef]
   )
 
-  def runInlined(origin: Inlined)(owner: Symbol): CpsTree =
+  def runInlined(origin: Inlined, expectedType: Option[TypeRepr] = None)(owner: Symbol): CpsTree =
     if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"Inlined, origin=${safeShow(origin)}")
     val monad = cpsCtx.monad.asTerm
     val s0 = InlinedBindingsRecord(HashMap.empty, List.empty, List.empty)
@@ -249,7 +249,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       funValDefs.changes.foreach { b =>
         cpsCtx.log(s"fubValDef changes binding: ${b}")
       }
-    val cpsBody = runRoot(body)(owner)
+    val cpsBody = runRoot(body, expectedType = expectedType)(owner)
     if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"runInline, cpsBody=${cpsBody}")
     if (origin.bindings.isEmpty) then cpsBody
     else InlinedCpsTree(owner, origin, funValDefs.newBindings.reverse, cpsBody)
@@ -295,7 +295,7 @@ object InlinedTreeTransform:
 
       def bridge(): CpsExpr[F, T] =
         val origin = inlinedTerm.asInstanceOf[quotes.reflect.Inlined]
-        runInlined(origin)(qctx.reflect.Symbol.spliceOwner).toResult[T]
+        runInlined(origin, Some(qctx.reflect.TypeRepr.of[T]))(qctx.reflect.Symbol.spliceOwner).toResult[T]
 
     }
     (new Bridge(cpsCtx1)).bridge()

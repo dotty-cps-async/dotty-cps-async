@@ -18,7 +18,8 @@ object ValDefTransform:
     val rhs = valDef.rhs.getOrElse(
       throw MacroError(s"val $valDef without right part in block ", cpsCtx.patternCode)
     )
-    val rhsType = TransformUtil.veryWiden(rhs.tpe).asType
+    // the declared type: the right part conforms to it, a widened type of the right part may not (#166)
+    val rhsType = valDef.tpt.tpe.asType
     rhsType match
       case '[et] =>
         if cpsCtx.flags.debugLevel > 15 then cpsCtx.log(s"ValDef::rightPart is ${TransformUtil.safeShow(rhs)}")
