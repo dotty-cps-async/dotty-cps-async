@@ -16,7 +16,12 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
 
   import qctx.reflect._
 
-  def runRoot(term: qctx.reflect.Term, muted: Boolean = false)(owner: Symbol): CpsTree =
+  /** @param expectedType
+    *   the type, which the term is expected to have, when known by the caller (see `TransformUtil.veryWiden`, #166).
+    */
+  def runRoot(term: qctx.reflect.Term, muted: Boolean = false, expectedType: Option[qctx.reflect.TypeRepr] = None)(
+      owner: Symbol
+  ): CpsTree =
     if (cpsCtx.flags.debugLevel >= 15)
       cpsCtx.log(s"runRoot: (nesting = ${cpsCtx.nesting} term=${safeShow(term)}")
     val r: CpsTree = term.tpe.widen match {
@@ -71,13 +76,16 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
               muted,
               scope =>
                 scope
-                  .runInlined(inlined.asInstanceOf[scope.qctx.reflect.Inlined])(owner.asInstanceOf[scope.qctx.reflect.Symbol])
+                  .runInlined(
+                    inlined.asInstanceOf[scope.qctx.reflect.Inlined],
+                    expectedType.asInstanceOf[Option[scope.qctx.reflect.TypeRepr]]
+                  )(owner.asInstanceOf[scope.qctx.reflect.Symbol])
                   .inCake(thisTransform)
             )
             tree
           // special case, until we not enabled total blcok
           case minBlock @ Block(Nil, last) =>
-            val cpsLast = runRoot(last, muted = muted)(owner)
+            val cpsLast = runRoot(last, muted = muted, expectedType = expectedType)(owner)
             cpsLast
           // should be enabled after owner-in-cps-tree
           // case block@Block(stats,last) =>
@@ -107,7 +115,8 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           case _ => // TODO: elimi
             val expr = term.asExpr
             val monad = cpsCtx.monad
-            TransformUtil.veryWiden(term.tpe).asType match
+            val tpe = TransformUtil.veryWiden(term.tpe, expectedType)
+            tpe.asType match
               case '[et] =>
                 val termExpr =
                   try term.asExprOf[et]
@@ -116,7 +125,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                       println(s"Can't cast term ${TransformUtil.safeShow(term)} to ${Type.show[et]}")
                       println(s"raw term=${term}")
                       println(
-                        s"term.tpe=${term.tpe.show}, term.tpe.widen=${term.tpe.widen.show}, term.tpe.veryWiden=${TransformUtil.veryWiden(term.tpe).show}"
+                        s"term.tpe=${term.tpe.show}, term.tpe.widen=${term.tpe.widen.show}, transformed with ${tpe.show}"
                       )
                       println(s"term.pos=${term.pos.sourceFile.jpath}:${term.pos.startLine} (col ${term.pos.startColumn})")
 
@@ -139,7 +148,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                       println(s"Exception duting transforming tree ${TransformUtil.safeShow(term)}, ")
                       throw e
                   }
-                val r: CpsTree = exprToTree(rCpsExpr, term)(owner)
+                val r: CpsTree = exprToTree(rCpsExpr, tpe)(owner)
                 if cpsCtx.flags.debugLevel >= 10 then
                   cpsCtx.log(s"runRoot: rCpsExpr=${rCpsExpr.show}, async=${rCpsExpr.isAsync}")
                   if cpsCtx.flags.debugLevel >= 15 then
@@ -209,13 +218,14 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     r
   }
 
-  def exprToTree[T](expr: CpsExpr[F, T], e: Term)(owner: Symbol): CpsTree =
+  /** @param otpe the type, with which the term was transformed to `expr` */
+  def exprToTree[T](expr: CpsExpr[F, T], otpe: TypeRepr)(owner: Symbol): CpsTree =
     expr.syncOrigin match
       case Some(origin) =>
         PureCpsTree(owner, origin.asTerm, expr.isChanged)
       case None =>
         val transformed = expr.transformed.asTerm
-        AwaitSyncCpsTree(owner, transformed.changeOwner(owner), e.tpe.widen)
+        AwaitSyncCpsTree(owner, transformed.changeOwner(owner), otpe)
 
     // if (expr.isAsync)
     //    val transformed = expr.transformed.asTerm

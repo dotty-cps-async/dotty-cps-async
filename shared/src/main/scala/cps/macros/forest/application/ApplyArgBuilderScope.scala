@@ -65,6 +65,10 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
       import scala.quoted.Expr
 
       if cpsCtx.flags.debugLevel >= 15 then cpsCtx.log(s"buildApplyArgRecord: pos=${acc.posIndex}, t=${safeShow(t)} ")
+      // the type of the parameter is expected: the widened type of the argument can not conform to it (#166)
+      val expectedType =
+        if (acc.inRepeat || paramsDescriptor.isByName(acc.paramIndex)) None
+        else paramsDescriptor.paramType(acc.paramIndex)
       t match {
         case tr @ Typed(r @ Repeated(rargs, tpt), tpt1) =>
           // TODO: in nested context
@@ -109,25 +113,36 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
             val nested = buildApplyArgRecord(paramsDescriptor, body, acc.copy(records = IndexedSeq.empty))(owner).records.head
             acc.advance(nested)
           else
-            runInlined(inlined)(owner) match
+            runInlined(inlined, expectedType)(owner) match
               case inlined @ InlinedCpsTree(inlineOwner, origin, binding, cpsNested) =>
-                val nested = buildCpsTreeApplyArgRecord(paramsDescriptor, body, cpsNested, acc.copy(records = IndexedSeq.empty))(
-                  owner
-                ).records.head
+                val nested = buildCpsTreeApplyArgRecord(
+                  paramsDescriptor,
+                  body,
+                  cpsNested,
+                  acc.copy(records = IndexedSeq.empty),
+                  expectedType
+                )(owner).records.head
                 acc.advance(ApplyArgInlinedRecord(inlined, nested))
               case nonInlined =>
-                buildCpsTreeApplyArgRecord(paramsDescriptor, body, nonInlined, acc)(owner)
+                buildCpsTreeApplyArgRecord(paramsDescriptor, body, nonInlined, acc, expectedType)(owner)
         case _ =>
           if cpsCtx.flags.debugLevel >= 15 then
             cpsCtx.log(s"paramType=${paramsDescriptor.paramType(acc.paramIndex)}")
             cpsCtx.log(s"byName=${paramsDescriptor.isByName(acc.paramIndex)}")
-          val termCpsTree = runRoot(t)(owner)
-          buildCpsTreeApplyArgRecord(paramsDescriptor, t, termCpsTree, acc)(owner)
+          val termCpsTree = runRoot(t, expectedType = expectedType)(owner)
+          buildCpsTreeApplyArgRecord(paramsDescriptor, t, termCpsTree, acc, expectedType)(owner)
 
       }
     }
 
-    def buildCpsTreeApplyArgRecord(paramsDescriptor: MethodParamsDescriptor, t: Term, termCpsTree: CpsTree, acc: BuildApplyArgsAcc)(
+    /** @param expectedType the expected type, with which `termCpsTree` was built */
+    def buildCpsTreeApplyArgRecord(
+        paramsDescriptor: MethodParamsDescriptor,
+        t: Term,
+        termCpsTree: CpsTree,
+        acc: BuildApplyArgsAcc,
+        expectedType: Option[TypeRepr]
+    )(
         owner: Symbol
     ): BuildApplyArgsAcc = {
       if cpsCtx.flags.debugLevel >= 15 then
@@ -160,7 +175,7 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
             throw MacroError(s"Lambda expected", posExpr(t))
       else
         val argName: String = "a" + acc.posIndex // TODO: get name from params
-        val widenType = TransformUtil.veryWiden(t.tpe)
+        val widenType = TransformUtil.veryWiden(t.tpe, expectedType)
         val symbol = Symbol.newVal(Symbol.spliceOwner, argName, widenType, Flags.EmptyFlags, Symbol.noSymbol)
         val valDef = symbol.tree match
           case v @ ValDef(_, _, _) => v
