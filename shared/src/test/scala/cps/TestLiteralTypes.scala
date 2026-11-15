@@ -227,6 +227,38 @@ class TestLiteralTypes {
       v
     }
 
+  // not supported (#179): a match with async cases, which is expected to have a union of singleton types of vals;
+  //  the workaround: ascribe the match
+  def assignValRefMatchAscribed[F[_]: CpsMonad](r: () => F[Int]): F[Int] =
+    val x = 1
+    val y = 2
+    async[F] {
+      var v = 0
+      v = (await(r()) match
+        case 1 => { await(r()); x }
+        case _ => y
+      ): Int
+      v
+    }
+
+  @Test def testAsyncCasesOfValRefsAreReported() = {
+    val errors = scala.compiletime.testing.typeCheckErrors("""
+      {
+        val x = 1
+        val y = 2
+        async[Future] {
+          var v = 0
+          v = await(g(1)) match
+            case 10 => { await(g(2)); x }
+            case _  => y
+          v
+        }
+      }
+    """)
+    // with the compiler plugin, async is transformed after the typer: there are no errors here
+    assert(errors.isEmpty || errors.exists(_.message.contains("is not supported")), errors.map(_.message).mkString("\n"))
+  }
+
   def litA: "a" = "a"
 
   def onlyA(s: "a"): String = s + "!"
@@ -249,10 +281,11 @@ class TestLiteralTypes {
     val r = () => Future.successful(1)
     val c = for {
       a <- assignValRefMatch[Future](r)
+      b <- assignValRefMatchAscribed[Future](r)
       c <- termRefsOfLiteralType[Future](r)
       d <- matchOfLiteralTypeVar[Future](r)
-    } yield (a, c, d)
-    FutureCompleter(c.map(v => assert(v == (1, "a!a!", "a"), s"v=$v")))
+    } yield (a, b, c, d)
+    FutureCompleter(c.map(v => assert(v == (1, 1, "a!a!", "a"), s"v=$v")))
   }
 
   // PureEffect is invariant: the literal types of branches are cast to the result type

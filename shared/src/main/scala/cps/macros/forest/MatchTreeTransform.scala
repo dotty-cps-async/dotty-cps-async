@@ -29,6 +29,13 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     val asyncCases = cpsCases.exists(_.isAsync)
     val changedCases = cpsCases.exists(_.isChanged)
     if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"matchTransform: asyncCases=${asyncCases}, changedCases=${changedCases}")
+    if (asyncCases && !(otpe <:< TypeRepr.of[CT])) then
+      // the expected type requires singleton types of terms (as `x.type | y.type` for an assignment of `c match { ... x ... y }`),
+      //  async cases are transformed with the widened type and can't be cast to it
+      throw MacroError(
+        s"a match with async cases, which is expected to have type ${TypeRepr.of[CT].show}, is not supported (singleton types of terms, see https://github.com/dotty-cps-async/dotty-cps-async/issues/179): ascribe the match with a wider type, as `(... match { ... }): ${otpe.show}`",
+        matchTerm.asExpr
+      )
     val nCases = if (asyncCases) {
       (matchTerm.cases zip cpsCases).map { (old, cpstree) =>
         CaseDef.copy(old)(old.pattern, old.guard, cpstree.castOtpe(otpe).transformed)
