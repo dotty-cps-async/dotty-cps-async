@@ -169,7 +169,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def otpe: TypeRepr =
       origin match
-        case Typed(_, tpt) => tpt.tpe // a cast (castOtpe) to a literal type is not widened (#166)
+        case Typed(_, tpt) => TransformUtil.widenTreeType(tpt.tpe) // a cast (castOtpe) to a literal type is kept (#166)
         case t: Term       => t.tpe.widen
         case other         => TypeRepr.of[Unit]
 
@@ -349,9 +349,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def transformed: Term = {
       val untmapTerm = cpsCtx.monad.asTerm.select(mapSymbol)
-      // otpe is the type, with which the tree was built: its literal types are kept (they can be required by an expected
-      //  type, #166), singleton types of terms are widened
-      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
+      val wPrevOtpe = TransformUtil.widenTreeType(prev.otpe)
       val tmapTerm = untmapTerm.appliedToTypes(List(wPrevOtpe, otpe))
       val r = tmapTerm.appliedToArgss(
         List(
@@ -411,11 +409,9 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       val monad = cpsCtx.monad.asTerm
       val untpFlatMapTerm = monad.select(flatMapSymbol)
       // val wPrevOtpe = prev.otpe.widen
-      // otpe is the type, with which the tree was built: its literal types are kept (they can be required by an expected
-      //  type, #166), singleton types of terms are widened
-      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
+      val wPrevOtpe = TransformUtil.widenTreeType(prev.otpe)
       // val wOtpe = otpe.widen
-      val wOtpe = TransformUtil.veryWiden(otpe, Some(otpe))
+      val wOtpe = TransformUtil.widenTreeType(otpe)
       val tpFlatMapTerm = untpFlatMapTerm.appliedToTypes(List(wPrevOtpe, wOtpe))
       val r = tpFlatMapTerm.appliedToArgss(
         List(

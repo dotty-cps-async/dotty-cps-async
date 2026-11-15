@@ -10,10 +10,10 @@ import cps.monads.given
 import cps.pe.{PureEffect, given}
 import cps.util.FutureCompleter
 
-/** Literal types (and unions of them) of terms with `await` are not widened, when the expected type requires them: a union written by
-  * the user (`val t: "a" | "b"`) can't be told from a union of branches (#166). Without such an expected type, literal types are widened
-  * as before. Singleton types of vals (also in unions: `if c then x else y` has type `x.type | y.type`) are widened, as the transformed
-  * terms do not keep them.
+/** Literal types (and unions of them) and `this.type` of terms with `await` are not widened, when the expected type requires them: a
+  * union written by the user (`val t: "a" | "b"`) can't be told from a union of branches (#166). Without such an expected type, they are
+  * widened as before. Singleton types of vals (also in unions: `if c then x else y` has type `x.type | y.type`) are widened, as the
+  * transformed terms do not keep them.
   */
 class TestLiteralTypes {
 
@@ -196,6 +196,63 @@ class TestLiteralTypes {
       c <- precalcLiteralArg[Future](r)
     } yield (a, b, c)
     FutureCompleter(c.map(v => assert(v == ("bb", (List(1, 1), List("b", "b"), List(true, false)), "b1"), s"v=$v")))
+  }
+
+  // `this.type` and literal types of term refs, which the expected type requires, are kept; a match without async cases
+  //  has its expected type
+
+  class Self {
+    def self(r: () => Future[Int]): Future[this.type] = async[Future] {
+      await(r()) match
+        case 1 => this
+        case _ => this
+    }
+  }
+
+  @Test def testThisTypeResult() = {
+    val s = Self()
+    val c = s.self(() => Future.successful(1))
+    FutureCompleter(c.map(r => assert(r eq s)))
+  }
+
+  // the right part of the assignment has type `x.type | y.type`
+  def assignValRefMatch[F[_]: CpsMonad](r: () => F[Int]): F[Int] =
+    val x = 1
+    val y = 2
+    async[F] {
+      var v = 0
+      v = await(r()) match
+        case 1 => x
+        case _ => y
+      v
+    }
+
+  def litA: "a" = "a"
+
+  def onlyA(s: "a"): String = s + "!"
+
+  def termRefsOfLiteralType[F[_]: CpsMonad](r: () => F[Int]): F[String] =
+    var x: "a" = "a"
+    async[F] {
+      onlyA({ await(r()); litA }) + onlyA({ await(r()); x })
+    }
+
+  def matchOfLiteralTypeVar[F[_]: CpsMonad](r: () => F[Int]): F["a"] =
+    var x: "a" = "a"
+    async[F] {
+      await(r()) match
+        case 1 => { await(r()); x }
+        case _ => x
+    }
+
+  @Test def testSingletonTypesInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- assignValRefMatch[Future](r)
+      c <- termRefsOfLiteralType[Future](r)
+      d <- matchOfLiteralTypeVar[Future](r)
+    } yield (a, c, d)
+    FutureCompleter(c.map(v => assert(v == (1, "a!a!", "a"), s"v=$v")))
   }
 
   // PureEffect is invariant: the literal types of branches are cast to the result type

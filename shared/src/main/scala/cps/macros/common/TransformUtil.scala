@@ -222,22 +222,44 @@ object TransformUtil:
   /** widen, which works over 'or' and 'and' types. (bug in dotty?)
     *
     * @param expected
-    *   the expected type of the term: a literal type, which it requires, is not widened. (A union of literal types can be written
-    *   by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft, #166)
+    *   the expected type of the term: a literal type or `this.type`, which it requires (it conforms to the expected type, the widened
+    *   type does not), is not widened; a term ref of a literal type gives the literal type. (A union of literal types can be written
+    *   by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft; `this.type` can be the
+    *   result type, #166.) Singleton types of other term refs are widened: transformed terms do not keep them (inline proxies, for
+    *   example, get new symbols).
     */
   def veryWiden(using qctx: Quotes)(
       tp: qctx.reflect.TypeRepr,
       expected: Option[qctx.reflect.TypeRepr] = None
   ): qctx.reflect.TypeRepr =
     import quotes.reflect._
+    def required(t: TypeRepr): Boolean = expected.exists(e => t <:< e && !(tp.widen <:< e))
     tp match
       case OrType(lhs, rhs) =>
         val nLhs = veryWiden(lhs, expected)
         val nRhs = veryWiden(rhs, expected)
         if (nLhs =:= nRhs) then nLhs
         else OrType(nLhs, nRhs)
-      case ConstantType(_) if expected.exists(e => !(tp.widen <:< e)) => tp
-      case other                                                       => tp.widen
+      case ConstantType(_) | ThisType(_) if required(tp) => tp
+      case other =>
+        tp.widenTermRefByName match
+          case constant @ ConstantType(_) if required(constant) => constant
+          case _                                                => tp.widen
+
+  /** The type of a tree, built with type `tp`, for the type arguments of `map` / `flatMap`: literal types and `this.type` are kept
+    * (they are in `tp`, when an expected type required them, see [[veryWiden]], #166), singleton types of other terms are widened, as by
+    * `veryWiden` (they can refer to symbols, which the transformation creates anew, as inline proxies).
+    */
+  def widenTreeType(using qctx: Quotes)(tp: qctx.reflect.TypeRepr): qctx.reflect.TypeRepr =
+    import quotes.reflect._
+    tp match
+      case OrType(lhs, rhs) =>
+        val nLhs = widenTreeType(lhs)
+        val nRhs = widenTreeType(rhs)
+        if (nLhs =:= nRhs) then nLhs
+        else OrType(nLhs, nRhs)
+      case ConstantType(_) | ThisType(_) => tp
+      case other                         => tp.widen
 
   def ensureTyped(using qctx: Quotes)(term: qctx.reflect.Term, tp: qctx.reflect.TypeRepr): qctx.reflect.Term =
     import quotes.reflect._

@@ -48,11 +48,12 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         else CpsTree.pure(owner, Match.copy(matchTerm)(nScrutinee, nCases), isChanged = true)
       else
         val nTree = Match.copy(matchTerm)(nScrutinee, nCases)
-        CpsTree.impure(owner, nTree, otpe)
+        AwaitSyncCpsTree(owner, nTree, otpe) // not CpsTree.impure: it widens otpe
     else
       val uncheckedAnnotations = TransformUtil.exhaustivityUncheckedAnnotations(scrutinee.tpe)
       def selector(x: Term): Term = TransformUtil.withUncheckedAnnotations(x, uncheckedAnnotations)
-      if (!asyncCases) then cpsScrutinee.monadMap(x => Match.copy(matchTerm)(selector(x), nCases), otpe)
+      // the cases are not cast: the match conforms to its expected type
+      if (!asyncCases) then cpsScrutinee.monadMap(x => Match.copy(matchTerm)(selector(x), nCases), TypeRepr.of[CT])
       else cpsScrutinee.monadFlatMap(x => Match.copy(matchTerm)(selector(x), nCases), otpe)
 
 object MatchTreeTransform:
