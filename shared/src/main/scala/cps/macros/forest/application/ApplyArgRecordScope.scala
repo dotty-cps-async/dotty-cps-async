@@ -93,6 +93,11 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def term: Term
     def index: Int
     def identArg(existAsync: Boolean): Term
+
+    /** The argument of a call, which is deferred to the compiler plugin (`@makeCPS`): the val of a precomputed argument (it is
+      * evaluated before the call), else the original term (the plugin transforms it).
+      */
+    def deferredArg(existsAsync: Boolean): Term
     def isAsync: Boolean
     def hasShiftedLambda: Boolean
 
@@ -151,6 +156,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           term
       retval
     }
+
+    override def deferredArg(existsAsync: Boolean): Term =
+      if (usePrepend(existsAsync)) Typed(Repeated(elements.map(_.deferredArg(existsAsync)), repeatedTerm.elemtpt), seqTypeTree)
+      else term
 
     override def isAsync = elements.exists(_.isAsync)
     override def hasShiftedLambda = elements.exists(_.hasShiftedLambda)
@@ -214,6 +223,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def noOrderDepended = termIsNoOrderDepended(term)
     override def shouldBeChangedSync: Boolean = isChanged
     override def identArg(existsAsync: Boolean): Term = term
+    override def deferredArg(existsAsync: Boolean): Term = term
     override def shift(): ApplyArgRecord = this
     override def withRuntimeAwait(runtimeAwait: qctx.reflect.Term): ApplyArgRecord = this
     override def append(tree: CpsTree): CpsTree = tree
@@ -236,6 +246,9 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       if (existsAsync) then ident
       else if termCpsTree.isChanged then termCpsTree.syncOrigin.get
       else term
+
+    def deferredArg(existsAsync: Boolean): Term =
+      if (existsAsync) then ident else term
 
     override def shift(): ApplyArgRecord = this
     override def withRuntimeAwait(runtimeAwait: qctx.reflect.Term): ApplyArgRecord = this
@@ -265,6 +278,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
     def identArg(existsAsync: Boolean): Term =
       generateLambda(existsAsync, false)
+
+    def deferredArg(existsAsync: Boolean): Term = term
 
     def getCaseObjectInstance(childSym: Symbol): Option[Term] =
       if childSym.flags.is(Flags.Module) then Some(Ref(childSym))
@@ -490,6 +505,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def shouldBeChangedSync = nested.shouldBeChangedSync
     def isCpsDirect: Boolean = nested.isCpsDirect
     def identArg(existsAsync: Boolean): Term = NamedArg(name, nested.identArg(existsAsync))
+    def deferredArg(existsAsync: Boolean): Term = NamedArg(name, nested.deferredArg(existsAsync))
     def shift(): ApplyArgRecord = copy(nested = nested.shift())
     def withRuntimeAwait(runtimeAwait: Term): ApplyArgRecord = copy(nested = nested.withRuntimeAwait(runtimeAwait))
     def append(a: CpsTree): CpsTree =
@@ -504,6 +520,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       optShiftType: Option[ApplicationShiftType],
       optRuntimeAwait: Option[Term]
   ) extends ApplyArgRecord {
+
+    def deferredArg(existsAsync: Boolean): Term = term
 
     def identArg(existsAsync: Boolean): Term =
       optShiftType match
@@ -557,6 +575,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def isCpsDirect: Boolean = nested.isCpsDirect
     def shouldBeChangedSync: Boolean = nested.shouldBeChangedSync
     def identArg(existsAsync: Boolean): Term = nested.identArg(existsAsync)
+    def deferredArg(existsAsync: Boolean): Term = nested.deferredArg(existsAsync)
     def shift(): ApplyArgRecord = copy(nested = nested.shift())
     def withRuntimeAwait(runtimeAwait: Term): ApplyArgRecord = copy(nested = nested.withRuntimeAwait(runtimeAwait))
     def append(a: CpsTree): CpsTree =

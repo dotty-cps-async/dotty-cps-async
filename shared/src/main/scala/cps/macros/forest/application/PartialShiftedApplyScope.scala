@@ -86,7 +86,7 @@ trait PartialShiftedApplyScope[F[_], CT, CC <: CpsMonadContext[F]]:
           case ApplicationShiftType.CPS_RUNTIME_AWAIT =>
             (arg: ApplyArgRecord) => arg.withRuntimeAwait(runtimeAwait).identArg(withAsync)
           case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
-            (arg: ApplyArgRecord) => arg.term
+            (arg: ApplyArgRecord) => arg.deferredArg(withAsync)
         appliedToArgsOrTypeArgs(shiftedDelayed(runtimeAwait), argTails, tailArgTransform)
       }
     }

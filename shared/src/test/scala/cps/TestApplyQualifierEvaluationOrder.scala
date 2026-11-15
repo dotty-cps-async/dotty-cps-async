@@ -43,6 +43,7 @@ class TestApplyQualifierEvaluationOrder {
       val r = track().sum(left(), await(right()))
       // `distinct`: the plugin evaluates `left()` once more, after `right` (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
       assert(log.distinct.toList == List("qualifier", "left", "right"), s"log=$log")
+      assert(log.count(_ == "qualifier") == 1, s"log=$log")
       assert(r == 5, s"r=$r")
     }
     FutureCompleter(c)
@@ -238,6 +239,17 @@ class TestApplyQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the qualifier is a val imported from an object with an initializer: the object is initialized before the argument
+  @Test def testImportedValObjectInitialization() = {
+    val c = async[Future] {
+      import ImportedValInitLoggedObject.*
+      holder.set(await({ importedValObjectLog += "right"; Future.successful(1) }))
+      assert(importedValObjectLog.toList == List("init", "right"), s"log=$importedValObjectLog")
+      assert(ImportedValInitLoggedObject.holder.n == 1, s"n=${ImportedValInitLoggedObject.holder.n}")
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier is changed by the transformation (an inner lambda is unshifted), but sync
   @Test def testChangedSyncQualifier() = {
     val log = ArrayBuffer[String]()
@@ -344,6 +356,14 @@ object TestApplyQualifierEvaluationOrder {
     importedObjectLog += "init"
     var n: Int = 0
     def set(x: Int): Unit = n = x
+  }
+
+  // only `testImportedValObjectInitialization` touches ImportedValInitLoggedObject
+  val importedValObjectLog = ArrayBuffer[String]()
+
+  object ImportedValInitLoggedObject {
+    importedValObjectLog += "init"
+    val holder = new Holder
   }
 
   trait Box {

@@ -757,8 +757,9 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                 case None =>
                   throw MacroError("Can't find runtime await provider", applyTerm.asExpr)
         case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN =>
-          // val call = callDelayed('{ ??? }.asTerm)
-          val call = applyTerm
+          // the call with the (bound) qualifier and the precomputed arguments: the original `applyTerm` would evaluate them
+          //  once more (#169)
+          val call = callDelayed('{ ??? }.asTerm)
           val retval =
             Apply(
               Apply(
@@ -882,8 +883,8 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
         (unused) =>
           Apply(
             funTerm,
-            argRecords.map(_.term).toList
-          ), // TODO: we can eliminate this if we have origin term
+            argRecords.map(_.deferredArg(argsSummaryProperties.hasAsync)).toList
+          ),
         PartialShiftedApplyFlags.empty
       )
 

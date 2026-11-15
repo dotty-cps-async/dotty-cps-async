@@ -201,6 +201,17 @@ class TestAssignQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the qualifier is a val imported from an object with an initializer: the object is initialized before the right part
+  @Test def testImportedValObjectInitialization() = {
+    val c = async[Future] {
+      import ImportedValInitLoggedObject.*
+      holder.n = await({ importedValObjectLog += "right"; Future.successful(1) })
+      assert(importedValObjectLog.toList == List("init", "right"), s"log=$importedValObjectLog")
+      assert(ImportedValInitLoggedObject.holder.n == 1, s"n=${ImportedValInitLoggedObject.holder.n}")
+    }
+    FutureCompleter(c)
+  }
+
 }
 
 object TestAssignQualifierEvaluationOrder {
@@ -230,6 +241,14 @@ object TestAssignQualifierEvaluationOrder {
   object ImportedInitLoggedObject {
     importedObjectLog += "init"
     var n: Int = 0
+  }
+
+  // only `testImportedValObjectInitialization` touches ImportedValInitLoggedObject
+  val importedValObjectLog = ArrayBuffer[String]()
+
+  object ImportedValInitLoggedObject {
+    importedValObjectLog += "init"
+    val holder = new Holder
   }
 
   object InitLoggedObject {

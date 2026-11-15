@@ -171,7 +171,8 @@ object ApplyTransform {
         if (sel.symbol == defn.Boolean_&& || sel.symbol == defn.Boolean_||) then
           BooleanShortcutsTransform(appTerm, owner, nesting, obj, sel.symbol)
         else parseMethodCall(appTerm, owner, nesting, obj, sel, None, argss)
-      case ImportedMethod(qual, sel, optTypeApply) if argss.exists(_.isAsync) && QualifierBinding.needsBinding(qual) =>
+      case ImportedMethod(qual, sel, optTypeApply)
+          if QualifierBinding.hasAsyncArgBeforeCall(argss) && QualifierBinding.needsBinding(qual) =>
         // a method imported from a term path (`import O.*; m(await(...))`): the path is the qualifier, evaluated before the arguments
         parseMethodCall(appTerm, owner, nesting, qual, sel, optTypeApply, argss)
       case _ =>
@@ -217,7 +218,8 @@ object ApplyTransform {
         // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
         val qual = cpsObj.unpure.get
         // `new C` is not a value: a constructor call has no qualifier
-        if (!fromCallChain && !sel.symbol.isConstructor && argss.exists(_.isAsync) && QualifierBinding.needsBinding(qual)) then
+        if (!fromCallChain && !sel.symbol.isConstructor && QualifierBinding.hasAsyncArgBeforeCall(argss) && QualifierBinding.needsBinding(qual))
+        then
           // the qualifier is evaluated before the arguments: `{ val q = qual; arg.flatMap(x => q.m(x)) }`
           val qualValDef = QualifierBinding.valDef(qual, "xQualApply", obj.span, owner)
           val qualSel = ref(qualValDef.symbol).select(sel.symbol).withSpan(sel.span)

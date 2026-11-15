@@ -31,7 +31,8 @@ class TestApplyJSGlobalScopeQualifier {
       val d = js.Dynamic.global.cpsApplyTestTwice(await(Future.successful(4)))
       assert(d.asInstanceOf[Int] == 8, s"d=$d")
     }
-    FutureCompleter(c)
+    // the global is removed, not to be seen by other tests
+    FutureCompleter(c.andThen(_ => js.special.delete(js.Dynamic.global.globalThis, "cpsApplyTestTwice")))
   }
 
 }

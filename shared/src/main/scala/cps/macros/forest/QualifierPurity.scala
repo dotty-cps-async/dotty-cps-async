@@ -58,10 +58,24 @@ private[forest] object QualifierPurity:
       if (flags.is(Flags.Mutable) || flags.is(Flags.Method) || !isByName.contains(false)) then QualifierPurity.Impure
       else if (flags.is(Flags.Lazy) || flags.is(Flags.Module)) then QualifierPurity.IdempotentPath
       else QualifierPurity.PurePath
+    // a synthetic `apply` of a case class companion
+    def isCaseClassApply(fun: Term): Boolean = fun match
+      case TypeApply(f, _) => isCaseClassApply(f)
+      case _ =>
+        val sym = fun.symbol
+        sym.name == "apply" && sym.flags.is(Flags.Synthetic) && sym.owner.flags.is(Flags.Module) &&
+        sym.owner.companionClass.flags.is(Flags.Case)
+    def argPurity(arg: Term): QualifierPurity = arg match
+      case Typed(Repeated(elems, _), _) => elems.map(argPurity).foldLeft(QualifierPurity.PurePath)(_.min(_))
+      case _                            => of(arg)
     term match
       case This(_) | Super(_, _) | Literal(_)   => QualifierPurity.PurePath
+      // a new case class instance with pure arguments has no other effects (`StringContext("a", "b")` of `s"a${await(x)}b"`: not
+      //  bound, the interpolation stays optimizable)
+      case Apply(fun, args) if isCaseClassApply(fun) => args.map(argPurity).foldLeft(QualifierPurity.PurePath)(_.min(_))
       case Ident(_) | Select(_, _) if isNoValue => QualifierPurity.PurePath
-      case Ident(_)                             => refPurity
+      // a member imported from a path (`import O.*; h`) is selected from it: the path is evaluated too
+      case Ident(_)                             => importedQualifier(term).map(q => refPurity.min(of(q))).getOrElse(refPurity)
       case Select(qual, _)                      => refPurity.min(of(qual))
       case _                                    => QualifierPurity.Impure
 
