@@ -20,20 +20,11 @@ object AssignTransform {
             val qual = lhsQual.unpure.get
             val cpsRhs = RootTransform(term.rhs, owner, nesting)
             cpsRhs.asyncKind match
-              case AsyncKind.Async(_) if !isPurePath(qual) && !isNoValue(qual) =>
+              case AsyncKind.Async(_) if QualifierBinding.needsBinding(qual) =>
                 // the qualifier is evaluated before the right part: `{ val q = qual; rhs.map(x => q.f = x) }`.
-                // A singleton type of a stable path (a lazy val or an object, or the result type of `def f(): b.type`) is kept: the type
-                // of the field can depend on it. Otherwise only singleton term references are widened (as `widenTermRefByName` in the
-                // macro): `this.type` stays.
-                val qualType = qual.tpe match
-                  case tr: Types.TermRef if isIdempotentPath(ref(tr)) => tr
-                  case _                                              => qual.tpe.widenTermRefExpr
-                val qualSym = newSymbol(owner, "xQualAssign".toTermName, Flags.EmptyFlags, qualType, NoSymbol)
-                val qualValDef = ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym)).withSpan(qualifier.span)
-                val lhs = ref(qualSym).select(term.lhs.symbol).withSpan(term.lhs.span)
-                BlockBoundsCpsTree(
-                  SeqCpsTree(term, owner, IndexedSeq(MemberDefCpsTree(term, owner, qualValDef)), lhsSyncAssign(term, lhs, cpsRhs, owner))
-                )
+                val qualValDef = QualifierBinding.valDef(qual, "xQualAssign", qualifier.span, owner)
+                val lhs = ref(qualValDef.symbol).select(term.lhs.symbol).withSpan(term.lhs.span)
+                QualifierBinding.withBinding(term, owner, qualValDef, lhsSyncAssign(term, lhs, cpsRhs, owner))
               case _ =>
                 val lhs = if (qual eq qualifier) then term.lhs else qual.select(term.lhs.symbol).withSpan(term.lhs.span)
                 lhsSyncAssign(term, lhs, cpsRhs, owner)
@@ -56,20 +47,8 @@ object AssignTransform {
   private def lhsQualifier(lhs: Tree)(using Context): Option[Tree] =
     lhs match
       case sel: Select => Some(sel.qualifier)
-      case id: Ident =>
-        id.tpe match
-          case Types.TermRef(prefix: Types.TermRef, _) => Some(ref(prefix).withSpan(id.span))
-          case _                                       => None
-      case _ => None
-
-  /** The statics of a Java class, a package and a Scala.js global scope object are not values: never bound, no initialization order. */
-  private def isNoValue(tree: Tree)(using Context): Boolean = {
-    val sym = tree.symbol
-    sym.is(Flags.Package) || sym.isAllOf(Flags.JavaModule) || sym.is(Flags.Module) && {
-      val jsGlobalScope = Symbols.getClassIfDefined("scala.scalajs.js.annotation.JSGlobalScope")
-      jsGlobalScope.exists && sym.moduleClass.hasAnnotation(jsGlobalScope)
-    }
-  }
+      case id: Ident   => QualifierBinding.importedQualifier(id)
+      case _           => None
 
   def lhsSyncAssign(term: Assign, lhs: Tree, cpsRhs: CpsTree, owner: Symbol)(using Context, CpsTopLevelContext): CpsTree = {
     cpsRhs.asyncKind match

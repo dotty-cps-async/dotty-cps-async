@@ -47,6 +47,12 @@ class Test12 {
 
 
   @Test
+  def testCompileAndRunM5(): Unit =
+    DotcInvocations.checkRuns(selection = (".*".r))(
+      TestRun("testdata/set12/m5", "cpstest.Test12m5", "3 qualifier,arg\n")
+    )
+
+  @Test
   def testCompileAndRunM3(): Unit =
     val dotcInvocations = new DotcInvocations()
     val (code, output) =
