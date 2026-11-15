@@ -10,9 +10,10 @@ import cps.monads.given
 import cps.pe.{PureEffect, given}
 import cps.util.FutureCompleter
 
-/** Literal types (and unions of them) of terms with `await` are not widened: a union written by the user (`val t: "a" | "b"`) can't be
-  * told from a union of branches, so both are kept (#166). Singleton types of vals (also in unions: `if c then x else y` has type
-  * `x.type | y.type`) are widened, as the transformed terms do not keep them.
+/** Literal types (and unions of them) of terms with `await` are not widened, when the expected type requires them: a union written by
+  * the user (`val t: "a" | "b"`) can't be told from a union of branches (#166). Without such an expected type, literal types are widened
+  * as before. Singleton types of vals (also in unions: `if c then x else y` has type `x.type | y.type`) are widened, as the transformed
+  * terms do not keep them.
   */
 class TestLiteralTypes {
 

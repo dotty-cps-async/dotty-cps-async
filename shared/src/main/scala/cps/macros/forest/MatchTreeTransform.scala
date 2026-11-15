@@ -21,8 +21,8 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     if (cpsCtx.flags.debugLevel >= 15) then
       cpsCtx.log(s"matchTransform: matchTerm.tpe=${matchTerm.tpe}")
       cpsCtx.log(s"matchTransform: matchTerm.tpe.widen=${matchTerm.tpe.widen}")
-      cpsCtx.log(s"matchTransform: veryWiden(matchTerm.tpe)=${TransformUtil.veryWiden(matchTerm.tpe)}")
     val otpe = TransformUtil.veryWiden(matchTerm.tpe, Some(TypeRepr.of[CT]))
+    if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"matchTransform: otpe=${otpe}")
     val scrutinee = matchTerm.scrutinee
     val cpsScrutinee = runRoot(scrutinee)(owner)
     val cpsCases = matchTerm.cases.map(caseDef => runRoot(caseDef.rhs, expectedType = Some(otpe))(owner))

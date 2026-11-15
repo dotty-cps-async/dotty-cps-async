@@ -349,7 +349,8 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def transformed: Term = {
       val untmapTerm = cpsCtx.monad.asTerm.select(mapSymbol)
-      // literal types of otpe are kept: they are in otpe, when required by an expected type (#166)
+      // otpe is the type, with which the tree was built: its literal types are kept (they can be required by an expected
+      //  type, #166), singleton types of terms are widened
       val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
       val tmapTerm = untmapTerm.appliedToTypes(List(wPrevOtpe, otpe))
       val r = tmapTerm.appliedToArgss(
@@ -410,7 +411,8 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       val monad = cpsCtx.monad.asTerm
       val untpFlatMapTerm = monad.select(flatMapSymbol)
       // val wPrevOtpe = prev.otpe.widen
-      // literal types of otpe are kept: they are in otpe, when required by an expected type (#166)
+      // otpe is the type, with which the tree was built: its literal types are kept (they can be required by an expected
+      //  type, #166), singleton types of terms are widened
       val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
       // val wOtpe = otpe.widen
       val wOtpe = TransformUtil.veryWiden(otpe, Some(otpe))

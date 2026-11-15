@@ -125,7 +125,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                       println(s"Can't cast term ${TransformUtil.safeShow(term)} to ${Type.show[et]}")
                       println(s"raw term=${term}")
                       println(
-                        s"term.tpe=${term.tpe.show}, term.tpe.widen=${term.tpe.widen.show}, term.tpe.veryWiden=${TransformUtil.veryWiden(term.tpe).show}"
+                        s"term.tpe=${term.tpe.show}, term.tpe.widen=${term.tpe.widen.show}, transformed with ${tpe.show}"
                       )
                       println(s"term.pos=${term.pos.sourceFile.jpath}:${term.pos.startLine} (col ${term.pos.startColumn})")
 
