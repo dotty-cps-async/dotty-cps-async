@@ -22,10 +22,7 @@ trait MatchTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsCtx.log(s"matchTransform: matchTerm.tpe=${matchTerm.tpe}")
       cpsCtx.log(s"matchTransform: matchTerm.tpe.widen=${matchTerm.tpe.widen}")
       cpsCtx.log(s"matchTransform: veryWiden(matchTerm.tpe)=${TransformUtil.veryWiden(matchTerm.tpe)}")
-    // cases are transformed and cast to the expected type of the match, not to the widened type of the match: a union of
-    //  literal types can be written by the user, and the cast to the expected type is an additional map in an invariant F (#166)
-    val expectedOtpe = TransformUtil.veryWiden(TypeRepr.of[CT])
-    val otpe = if (matchTerm.tpe <:< expectedOtpe) then expectedOtpe else TransformUtil.veryWiden(matchTerm.tpe)
+    val otpe = TransformUtil.veryWiden(matchTerm.tpe, Some(TypeRepr.of[CT]))
     val scrutinee = matchTerm.scrutinee
     val cpsScrutinee = runRoot(scrutinee)(owner)
     val cpsCases = matchTerm.cases.map(caseDef => runRoot(caseDef.rhs, expectedType = Some(otpe))(owner))

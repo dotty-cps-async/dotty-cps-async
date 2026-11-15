@@ -17,8 +17,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
   import qctx.reflect._
 
   /** @param expectedType
-    *   the type, which the transformed term should have, when known by the caller (and the term conforms to it). Without it, the
-    *   term is transformed with its own widened type, and a cast to the expected type can need an additional `map` (#166).
+    *   the type, which the term is expected to have, when known by the caller (see `TransformUtil.veryWiden`, #166).
     */
   def runRoot(term: qctx.reflect.Term, muted: Boolean = false, expectedType: Option[qctx.reflect.TypeRepr] = None)(
       owner: Symbol
@@ -116,10 +115,7 @@ trait RootTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           case _ => // TODO: elimi
             val expr = term.asExpr
             val monad = cpsCtx.monad
-            val tpe = expectedType
-              .map(TransformUtil.veryWiden(_))
-              .filter(term.tpe <:< _)
-              .getOrElse(TransformUtil.veryWiden(term.tpe))
+            val tpe = TransformUtil.veryWiden(term.tpe, expectedType)
             tpe.asType match
               case '[et] =>
                 val termExpr =

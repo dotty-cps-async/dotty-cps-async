@@ -221,21 +221,23 @@ object TransformUtil:
 
   /** widen, which works over 'or' and 'and' types. (bug in dotty?)
     *
-    * Singleton types of terms are widened (also inside a union), literal types are kept: Quotes does not show whether a union is
-    * soft (lub of branches, as `if c then "a" else "b"`) or written by the user (`val t: "a" | "b"`), and the second one can't be
-    * widened to `String` (#166).
+    * @param expected
+    *   the expected type of the term: a literal type, which it requires, is not widened. (A union of literal types can be written
+    *   by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft, #166)
     */
-  def veryWiden(using qctx: Quotes)(tp: qctx.reflect.TypeRepr): qctx.reflect.TypeRepr =
+  def veryWiden(using qctx: Quotes)(
+      tp: qctx.reflect.TypeRepr,
+      expected: Option[qctx.reflect.TypeRepr] = None
+  ): qctx.reflect.TypeRepr =
     import quotes.reflect._
-    tp.widenTermRefByName match
+    tp match
       case OrType(lhs, rhs) =>
-        val nLhs = veryWiden(lhs)
-        val nRhs = veryWiden(rhs)
-        if (nLhs <:< nRhs) then nRhs
-        else if (nRhs <:< nLhs) then nLhs
+        val nLhs = veryWiden(lhs, expected)
+        val nRhs = veryWiden(rhs, expected)
+        if (nLhs =:= nRhs) then nLhs
         else OrType(nLhs, nRhs)
-      case constant @ ConstantType(_) => constant
-      case other                      => other.widen
+      case ConstantType(_) if expected.exists(e => !(tp.widen <:< e)) => tp
+      case other                                                       => tp.widen
 
   def ensureTyped(using qctx: Quotes)(term: qctx.reflect.Term, tp: qctx.reflect.TypeRepr): qctx.reflect.Term =
     import quotes.reflect._

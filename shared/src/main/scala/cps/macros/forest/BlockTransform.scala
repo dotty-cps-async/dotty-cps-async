@@ -34,12 +34,11 @@ class BlockTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx:
           }
         case t: Term =>
           // TODO: rootTransform
-          t.asExpr match
-            case '{ $p: tp } =>
-              Async.nestTransform[F, T, C, tp](p, cpsCtx)
-            case other =>
-              printf(other.show)
-              throw MacroError(s"can't handle term in block: $other", t.asExpr)
+          // with the widened type: the own type of the statement can be a union of singletons
+          //  (`c match { case 1 => x; case _ => y }` has type `x.type | y.type`), which the transformed term does not keep (#166)
+          TransformUtil.veryWiden(t.tpe).asType match
+            case '[tp] =>
+              Async.nestTransform[F, T, C, tp](t.asExprOf[tp], cpsCtx)
         case i: Import =>
           // Import is not statement - so, it is impossible to create block with import
           //   in macros.

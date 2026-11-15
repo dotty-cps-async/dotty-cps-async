@@ -32,7 +32,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       awaitVals: List[ValDef]
   )
 
-  def runInlined(origin: Inlined, expectedType: Option[TypeRepr] = None)(owner: Symbol): CpsTree =
+  def runInlined(origin: Inlined, expectedType: Option[TypeRepr])(owner: Symbol): CpsTree =
     if (cpsCtx.flags.debugLevel >= 15) then cpsCtx.log(s"Inlined, origin=${safeShow(origin)}")
     val monad = cpsCtx.monad.asTerm
     val s0 = InlinedBindingsRecord(HashMap.empty, List.empty, List.empty)
@@ -92,7 +92,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                 case _ =>
                   val cpsRhs =
                     try {
-                      runRoot(rhs)(owner)
+                      runRoot(rhs, expectedType = Some(tpt.tpe))(owner)
                     } catch {
                       case ex: MacroError =>
                         report.warning(

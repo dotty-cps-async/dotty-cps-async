@@ -169,8 +169,9 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def otpe: TypeRepr =
       origin match
-        case t: Term => t.tpe.widen
-        case other   => TypeRepr.of[Unit]
+        case Typed(_, tpt) => tpt.tpe // a cast (castOtpe) to a literal type is not widened (#166)
+        case t: Term       => t.tpe.widen
+        case other         => TypeRepr.of[Unit]
 
     def castOtpe(newOtpe: TypeRepr): CpsTree =
       if (newOtpe =:= otpe)
@@ -192,7 +193,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
         case t: Term =>
           // given quotes = owner.asQuote  //  pure[Type](originTerm)(t)
           val untpureTerm = cpsCtx.monad.asTerm.select(pureSymbol)
-          val tpureTerm = untpureTerm.appliedToType(otpe.widen)
+          val tpureTerm = untpureTerm.appliedToType(otpe)
           val r = Apply.copy(origin)(tpureTerm, List(t))
           r
         case s: Statement => BlockCpsTree(owner, Queue(s), CpsTree.empty).transformed
@@ -348,7 +349,8 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def transformed: Term = {
       val untmapTerm = cpsCtx.monad.asTerm.select(mapSymbol)
-      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe)
+      // literal types of otpe are kept: they are in otpe, when required by an expected type (#166)
+      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
       val tmapTerm = untmapTerm.appliedToTypes(List(wPrevOtpe, otpe))
       val r = tmapTerm.appliedToArgss(
         List(
@@ -408,9 +410,10 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       val monad = cpsCtx.monad.asTerm
       val untpFlatMapTerm = monad.select(flatMapSymbol)
       // val wPrevOtpe = prev.otpe.widen
-      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe)
+      // literal types of otpe are kept: they are in otpe, when required by an expected type (#166)
+      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, Some(prev.otpe))
       // val wOtpe = otpe.widen
-      val wOtpe = TransformUtil.veryWiden(otpe)
+      val wOtpe = TransformUtil.veryWiden(otpe, Some(otpe))
       val tpFlatMapTerm = untpFlatMapTerm.appliedToTypes(List(wPrevOtpe, wOtpe))
       val r = tpFlatMapTerm.appliedToArgss(
         List(

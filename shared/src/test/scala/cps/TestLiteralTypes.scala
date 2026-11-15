@@ -110,6 +110,93 @@ class TestLiteralTypes {
     FutureCompleter(c.map(r => assert(r && acc(0) == 2, s"r=$r, acc=${acc(0)}")))
   }
 
+  // the value of the match is discarded
+
+  def valRefUnionStatement[F[_]: CpsMonad](r: () => F[Int]): F[Int] =
+    val x = 1
+    val y = 2
+    async[F] {
+      await(r()) match
+        case 1 => { await(r()); x }
+        case _ => y
+      0
+    }
+
+  def literalUnionStatement[F[_]: CpsMonad](r: () => F[Int]): F[Int] = async[F] {
+    await(r()) match
+      case 1 => { await(r()); "x" }
+      case _ => "y"
+    0
+  }
+
+  @Test def testStatementsInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- valRefUnionStatement[Future](r)
+      b <- literalUnionStatement[Future](r)
+    } yield (a, b)
+    FutureCompleter(c.map(v => assert(v == (0, 0), s"v=$v")))
+  }
+
+  def singleLiteralMatch[F[_]: CpsMonad](r: () => F[Int]): F["x"] = async[F] {
+    await(r()) match
+      case 1 => { await(r()); "x" }
+      case _ => "x"
+  }
+
+  @Test def testSingleLiteralMatchInGenericMonad() = {
+    val c = singleLiteralMatch[Future](() => Future.successful(1))
+    FutureCompleter(c.map(r => assert(r == "x", s"r=$r")))
+  }
+
+  transparent inline def twiceAB(x: "a" | "b"): String = x + x
+
+  def inlineLiteralUnionParam[F[_]: CpsMonad](r: () => F[Int]): F[String] = async[F] {
+    twiceAB(if (await(r()) > 0) "a" else "b")
+  }
+
+  @Test def testInlineLiteralUnionParamInGenericMonad() = {
+    val c = inlineLiteralUnionParam[Future](() => Future.successful(1))
+    FutureCompleter(c.map(r => assert(r == "aa", s"r=$r")))
+  }
+
+  // without an expected type, which requires a literal type, literal types are widened
+
+  transparent inline def twice(x: String): String = x + x
+
+  def inlineArg[F[_]: CpsMonad](r: () => F[Int]): F[String] = async[F] {
+    twice({ await(r()); "b" })
+  }
+
+  def lambdaResults[F[_]: CpsMonad](r: () => F[Int]): F[(List[Int], List[String], List[Boolean])] = async[F] {
+    val a = List(1, 2).map(x => if (await(r()) > 0) 1 else 2)
+    val b = List(1, 2).map(x => { await(r()); "b" })
+    val c = List(1, 2).map(x =>
+      x match
+        case 1 => { await(r()); true }
+        case _ => false
+    )
+    (a, b, c)
+  }
+
+  def tag(i: Int): "b" = "b"
+
+  def foo(s: String, i: Int): String = s + i
+
+  def precalcLiteralArg[F[_]: CpsMonad](r: () => F[Int]): F[String] = async[F] {
+    foo(tag(await(r())), await(r()))
+  }
+
+  @Test def testWidenedLiteralsInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- inlineArg[Future](r)
+      b <- lambdaResults[Future](r)
+      c <- precalcLiteralArg[Future](r)
+    } yield (a, b, c)
+    FutureCompleter(c.map(v => assert(v == ("bb", (List(1, 1), List("b", "b"), List(true, false)), "b1"), s"v=$v")))
+  }
+
   // PureEffect is invariant: the literal types of branches are cast to the result type
 
   @Test def testSoftLiteralUnionInInvariantMonad() = {
