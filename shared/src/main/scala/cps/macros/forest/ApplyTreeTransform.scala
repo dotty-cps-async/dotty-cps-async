@@ -175,13 +175,22 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
             case _ =>
               val cpsObj = cpsObj1.select(obj, obj.symbol, obj.tpe).typeApply(fun, targs, fun.tpe)
               handleArgs1(applyTerm, fun, cpsObj, args, tails)(owner)
-        else if (cpsObj1.isChanged)
-          // val cpsObj = cpsObj1.applyTerm1(x=>TypeApply(Select(x,obj.symbol),targs), fun.tpe)
-          val cpsObj = cpsObj1.select(obj, obj.symbol, obj.tpe).typeApply(fun, targs, fun.tpe)
-          handleArgs1(applyTerm, fun, cpsObj, args, tails)(owner)
-        else handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails)(owner)
+        else
+          // `new C[T]` is not a value: a constructor call has no qualifier
+          val qualifier =
+            if (obj.symbol.isClassConstructor) then None
+            else cpsObj1.syncOrigin.map(syncObj1 => SyncQualifier(syncObj1, q => TypeApply(q.select(obj.symbol), targs)))
+          if (cpsObj1.isChanged)
+            // val cpsObj = cpsObj1.applyTerm1(x=>TypeApply(Select(x,obj.symbol),targs), fun.tpe)
+            val cpsObj = cpsObj1.select(obj, obj.symbol, obj.tpe).typeApply(fun, targs, fun.tpe)
+            handleArgs1(applyTerm, fun, cpsObj, args, tails, qualifier = qualifier)(owner)
+          else handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails, qualifier = qualifier)(owner)
       case Ident(name) =>
-        handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails)(owner)
+        val qualifier =
+          QualifierPurity
+            .importedQualifier(using qctx)(obj)
+            .map(q0 => SyncQualifier(q0, q => TypeApply(q.select(obj.symbol), targs)))
+        handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails, qualifier = qualifier)(owner)
       case objApply @ Apply(fun1, args1) =>
         // SIP-47 or exception methods.
         //   full expression ave type: Apply(TypeApply(Apply(fun1,args1),targs), args)
@@ -258,7 +267,11 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           case _ =>
             if (cpsCtx.flags.debugLevel >= 15)
               cpsCtx.log(s"funSelect: ! lambda || Subst, fun=$fun fun.tpe=${fun.tpe}")
-            handleArgs1(applyTerm, fun, cpsObj.select(fun, fun.symbol, fun.tpe.widen), args, tails)(owner)
+            // `new C` is not a value: a constructor call has no qualifier
+            val qualifier =
+              if (cpsObj.isAsync || fun.symbol.isClassConstructor) then None
+              else cpsObj.syncOrigin.map(syncObj => SyncQualifier(syncObj, q => q.select(fun.symbol)))
+            handleArgs1(applyTerm, fun, cpsObj.select(fun, fun.symbol, fun.tpe.widen), args, tails, qualifier = qualifier)(owner)
 
   def withInlineBindings(owner: Symbol, origin: Inlined, tree: CpsTree): CpsTree =
     if (origin.bindings.isEmpty)
@@ -269,7 +282,9 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
   def handleFunIdent(applyTerm: Apply, fun: Term, args: List[Term], name: String, tails: List[ApplyArgsList])(
       owner: Symbol
   ): CpsTree =
-    handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails)(owner)
+    // a method imported from a term path (`import O.*; m(...)`): the path is the qualifier
+    val qualifier = QualifierPurity.importedQualifier(using qctx)(fun).map(q0 => SyncQualifier(q0, q => q.select(fun.symbol)))
+    handleArgs1(applyTerm, fun, CpsTree.pure(owner, fun), args, tails, qualifier = qualifier)(owner)
 
   def handleFunApply(
       applyTerm: Apply,
@@ -325,6 +340,7 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     * @param args - first argument list
     * @param tails - next argument lists if any
     * @param unpure - if true, that this is call from shifted substitution, which is already return F[_] by design.
+    * @param qualifier - the sync qualifier of `fun`, which is evaluated before the arguments when some of them are async
     */
   def handleArgs1(
       applyTerm: Apply,
@@ -332,7 +348,8 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       cpsFun: CpsTree,
       args: List[Term],
       tails: List[ApplyArgsList],
-      unpure: Boolean = false
+      unpure: Boolean = false,
+      qualifier: Option[SyncQualifier] = None
   )(owner: Symbol): CpsTree = {
     if cpsCtx.flags.debugLevel >= 15 then
       cpsCtx.log(s"handleArgs1, fun=${safeShow(fun)}")
@@ -412,7 +429,15 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
           buildApplyPrependArgsFlatMaps(cpsFun, fun, applyRecords, applyTerm, argsProperties, true, tails)(owner)
         case _ =>
           if (!cpsFun.isAsync) then
-            buildApplyPrependArgsFlatMaps(cpsFun, fun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
+            bindSyncQualifier(qualifier, argsProperties)(owner) match
+              case Some((qualValDef, qualCpsTree, nFun)) =>
+                // the qualifier is evaluated before the arguments: `{ val q = obj; arg.flatMap(x => q.m(x)) }`
+                val nCpsFun = CpsTree.pure(owner, nFun, isChanged = true)
+                val call =
+                  buildApplyPrependArgsFlatMaps(nCpsFun, nFun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
+                ValCpsTree(owner, qualValDef, qualCpsTree, call)
+              case None =>
+                buildApplyPrependArgsFlatMaps(cpsFun, fun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
           else
             // note,that if cpsFun is async, it should be caclulated before arguments
             // (see https://github.com/rssh/dotty-cps-async/issues/67)
@@ -458,6 +483,28 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
       retval
     }
   }
+
+  /** A sync qualifier `obj` of the called method: `obj.m`, `obj.m[T]` or `m` imported from `obj`.
+    * @param rebuildFun - builds the function with another qualifier
+    */
+  case class SyncQualifier(obj: Term, rebuildFun: Term => Term)
+
+  /** When an argument is async and the qualifier is not a pure path, the qualifier is bound to a val, to be evaluated before the
+    * arguments, as in Scala (see https://github.com/dotty-cps-async/dotty-cps-async/issues/169).
+    * @return
+    *   the val definition, its right part and the function with the val as the qualifier
+    */
+  def bindSyncQualifier(qualifier: Option[SyncQualifier], argsProperties: ApplyArgsSummaryProperties)(
+      owner: Symbol
+  ): Option[(ValDef, CpsTree, Term)] =
+    qualifier match
+      case Some(SyncQualifier(obj, rebuildFun))
+          if argsProperties.hasAsync && QualifierPurity.of(using qctx)(obj) != QualifierPurity.PurePath =>
+        val qualType = QualifierPurity.bindingType(using qctx)(obj, obj.tpe.widenTermRefByName)
+        val qualSym = Symbol.newVal(owner, "xQualApply", qualType, Flags.EmptyFlags, Symbol.noSymbol)
+        val qualValDef = ValDef(qualSym, Some(obj.changeOwner(qualSym)))
+        Some((qualValDef, CpsTree.pure(owner, obj), rebuildFun(Ref(qualSym))))
+      case _ => None
 
   def applyFunToUnchangedArgss(fun: Term, argss: List[ApplyArgsList]): Term =
     argss.foldLeft(fun) { (s, e) =>

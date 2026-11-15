@@ -171,9 +171,23 @@ object ApplyTransform {
         if (sel.symbol == defn.Boolean_&& || sel.symbol == defn.Boolean_||) then
           BooleanShortcutsTransform(appTerm, owner, nesting, obj, sel.symbol)
         else parseMethodCall(appTerm, owner, nesting, obj, sel, None, argss)
+      case ImportedMethod(qual, sel, optTypeApply) if argss.exists(_.isAsync) && QualifierBinding.needsBinding(qual) =>
+        // a method imported from a term path (`import O.*; m(await(...))`): the path is the qualifier, evaluated before the arguments
+        parseMethodCall(appTerm, owner, nesting, qual, sel, optTypeApply, argss)
       case _ =>
         parseApplicationNonLambda(appTerm, owner, nesting, argss)
     }
+  }
+
+  /** A method `m` or `m[T]` imported from a term path `O`: the path, the selection `O.m` and the type application. */
+  private object ImportedMethod {
+    def unapply(fun: Tree)(using Context): Option[(Tree, Select, Option[TypeApply])] =
+      fun match
+        case id: Ident =>
+          QualifierBinding.importedQualifier(id).map(qual => (qual, qual.select(id.symbol).withSpan(id.span), None))
+        case tpa @ TypeApply(id: Ident, _) =>
+          QualifierBinding.importedQualifier(id).map(qual => (qual, qual.select(id.symbol).withSpan(id.span), Some(tpa)))
+        case _ => None
   }
 
   def parseMethodCall(
@@ -199,11 +213,26 @@ object ApplyTransform {
         (cpsObjOrChain, false)
     val retval = cpsObj.asyncKind match
       case AsyncKind.Sync =>
-        val syncFun = optTypeApply match
-          case Some(ta) => cpsObj.select(sel).typeApply(ta)
-          case None     => cpsObj.select(sel)
         val callMode = FunCallMode(AsyncKind.Sync, ApplyArgCallMode.SYNC, None, false, fromCallChain)
-        parseSyncFunApplication(appTerm, owner, nesting, syncFun.unpure.get, argss, callMode)
+        // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
+        val qual = cpsObj.unpure.get
+        // `new C` is not a value: a constructor call has no qualifier
+        if (!fromCallChain && !sel.symbol.isConstructor && argss.exists(_.isAsync) && QualifierBinding.needsBinding(qual)) then
+          // the qualifier is evaluated before the arguments: `{ val q = qual; arg.flatMap(x => q.m(x)) }`
+          val qualValDef = QualifierBinding.valDef(qual, "xQualApply", obj.span, owner)
+          val qualSel = ref(qualValDef.symbol).select(sel.symbol).withSpan(sel.span)
+          val syncFun = optTypeApply match
+            case Some(ta) => TypeApply(qualSel, ta.args).withSpan(ta.span)
+            case None     => qualSel
+          val call = parseSyncFunApplication(appTerm, owner, nesting, syncFun, argss, callMode)
+          // the whole call with all argument lists, as in genApplication
+          val fullOrigin = if (argss.isEmpty) appTerm else argss.last.origin
+          QualifierBinding.withBinding(fullOrigin, owner, qualValDef, call)
+        else
+          val syncFun = optTypeApply match
+            case Some(ta) => cpsObj.select(sel).typeApply(ta)
+            case None     => cpsObj.select(sel)
+          parseSyncFunApplication(appTerm, owner, nesting, syncFun.unpure.get, argss, callMode)
       case AsyncKind.Async(internalKind) =>
         val valDefSym = newSymbol(owner, "xApplySelect".toTermName, Flags.EmptyFlags, cpsObj.originType.widen, Symbols.NoSymbol)
         val valDef = ValDef(valDefSym, EmptyTree).withSpan(appTerm.span)

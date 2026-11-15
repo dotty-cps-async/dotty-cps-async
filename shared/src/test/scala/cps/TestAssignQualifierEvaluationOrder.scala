@@ -31,6 +31,34 @@ class TestAssignQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the qualifier is a val selected from a method call: its TermRef type has a prefix that is not a path
+  @Test def testValOfMethodCallQualifier() = {
+    val log = ArrayBuffer[String]()
+    val nested = new Nested(new Holder)
+    def track(): Nested = { log += "qualifier"; nested }
+    def right(): Future[Int] = { log += "right"; Future.successful(1) }
+    val c = async[Future] {
+      track().holder.n = await(right())
+      assert(log.toList == List("qualifier", "right"), s"log=$log")
+      assert(nested.holder.n == 1, s"nested.holder.n=${nested.holder.n}")
+    }
+    FutureCompleter(c)
+  }
+
+  // the assignment is in a block in the right part of a val: the bound qualifier is moved with the right part
+  @Test def testAssignmentInValRightPart() = {
+    val log = ArrayBuffer[String]()
+    val h = new Holder
+    def track(): Holder = { log += "qualifier"; h }
+    def right(): Future[Int] = { log += "right"; Future.successful(1) }
+    val c = async[Future] {
+      val r = { track().n = await(right()); h.n + 1 }
+      assert(log.toList == List("qualifier", "right"), s"log=$log")
+      assert(r == 2, s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
   // the qualifier is a variable, changed by the right part: the old value is used
   @Test def testVarQualifierChangedByRight() = {
     val h1 = new Holder
