@@ -219,25 +219,52 @@ object TransformUtil:
       case other =>
         throw MacroError(s"Internal error: Lambda should be a block with a closure, we have $other", lambda.asExpr)
 
-  /** widen, which works over 'or' and 'and' types. (bug in dotty?)
+  /** widen, which works also inside unions (`.widen` leaves `x.type | y.type` as it is).
+    *
+    * Singleton types of terms are widened (`x.type | y.type` to `Int`): transformed terms do not keep them (inline proxies, for
+    * example, get new symbols). Literal types and `this.type`, also as the declared type of a term ref (`def a: "a"`,
+    * `val me: this.type`), do not refer to terms; what happens to them depends on `widenLiterals`.
     *
     * @param expected
-    *   the expected type of the term: a literal type, which it requires, is not widened. (A union of literal types can be written
-    *   by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft, #166)
+    *   the expected type of the term, used with `widenLiterals`
+    * @param widenLiterals
+    *   - true: the type, with which a term is transformed. A literal type or `this.type` is widened (`true | false` with expected
+    *     `Boolean` is `Boolean`), unless `expected` requires it: it conforms to `expected`, its widening does not. (A union of literal
+    *     types can be written by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is
+    *     soft; `this.type` can be the result type, #166.)
+    *   - false: the type of a tree, which was built with type `tp` (as the type arguments of `map` / `flatMap`): literal types and
+    *     `this.type` in it were kept, when the tree was built, and they are kept.
     */
   def veryWiden(using qctx: Quotes)(
       tp: qctx.reflect.TypeRepr,
-      expected: Option[qctx.reflect.TypeRepr] = None
+      expected: Option[qctx.reflect.TypeRepr] = None,
+      widenLiterals: Boolean = true
   ): qctx.reflect.TypeRepr =
     import quotes.reflect._
+    def keep(t: TypeRepr): Boolean = !widenLiterals || expected.exists(e => t <:< e && !(tp.widen <:< e))
     tp match
       case OrType(lhs, rhs) =>
-        val nLhs = veryWiden(lhs, expected)
-        val nRhs = veryWiden(rhs, expected)
+        val nLhs = veryWiden(lhs, expected, widenLiterals)
+        val nRhs = veryWiden(rhs, expected, widenLiterals)
         if (nLhs =:= nRhs) then nLhs
         else OrType(nLhs, nRhs)
-      case ConstantType(_) if expected.exists(e => !(tp.widen <:< e)) => tp
-      case other                                                       => tp.widen
+      case ConstantType(_) | ThisType(_) if keep(tp) => tp
+      case other =>
+        tp.widenTermRefByName match
+          case declared @ (ConstantType(_) | ThisType(_)) if keep(declared) => declared
+          case _                                                            => tp.widen
+
+  /** The error for a term, which is expected to have singleton types of terms (`x.type | y.type`): the transformed term does not keep
+    * them (https://github.com/dotty-cps-async/dotty-cps-async/issues/179).
+    */
+  def singletonTermTypesMessage(using Quotes)(expected: quotes.reflect.TypeRepr): String =
+    import quotes.reflect._
+    def render(tp: TypeRepr): String = tp match
+      case OrType(lhs, rhs) => s"${render(lhs)} | ${render(rhs)}"
+      case tr: TermRef      => s"${tr.termSymbol.name}.type"
+      case other            => other.show
+    s"the expression is expected to have type ${render(expected)}: singleton types of terms are not supported here " +
+      s"(https://github.com/dotty-cps-async/dotty-cps-async/issues/179); use a wider type, as `${veryWiden(expected, widenLiterals = false).show}`"
 
   def ensureTyped(using qctx: Quotes)(term: qctx.reflect.Term, tp: qctx.reflect.TypeRepr): qctx.reflect.Term =
     import quotes.reflect._

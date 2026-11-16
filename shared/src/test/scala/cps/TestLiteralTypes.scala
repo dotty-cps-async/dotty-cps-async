@@ -10,10 +10,10 @@ import cps.monads.given
 import cps.pe.{PureEffect, given}
 import cps.util.FutureCompleter
 
-/** Literal types (and unions of them) of terms with `await` are not widened, when the expected type requires them: a union written by
-  * the user (`val t: "a" | "b"`) can't be told from a union of branches (#166). Without such an expected type, literal types are widened
-  * as before. Singleton types of vals (also in unions: `if c then x else y` has type `x.type | y.type`) are widened, as the transformed
-  * terms do not keep them.
+/** Literal types (and unions of them) and `this.type` of terms with `await` are not widened, when the expected type requires them: a
+  * union written by the user (`val t: "a" | "b"`) can't be told from a union of branches (#166). Without such an expected type, they are
+  * widened as before. Singleton types of vals (also in unions: `if c then x else y` has type `x.type | y.type`) are widened, as the
+  * transformed terms do not keep them.
   */
 class TestLiteralTypes {
 
@@ -196,6 +196,143 @@ class TestLiteralTypes {
       c <- precalcLiteralArg[Future](r)
     } yield (a, b, c)
     FutureCompleter(c.map(v => assert(v == ("bb", (List(1, 1), List("b", "b"), List(true, false)), "b1"), s"v=$v")))
+  }
+
+  // `this.type` and literal types of term refs, which the expected type requires, are kept; a match without async cases
+  //  has its expected type
+
+  class Self {
+    def self(r: () => Future[Int]): Future[this.type] = async[Future] {
+      await(r()) match
+        case 1 => this
+        case _ => this
+    }
+
+    // a sync scrutinee, an async case
+    def selfSyncScrutinee(k: Int, r: () => Future[Int]): Future[this.type] = async[Future] {
+      k match
+        case 1 => { await(r()); this }
+        case _ => this
+    }
+  }
+
+  @Test def testThisTypeResult() = {
+    val s = Self()
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- s.self(r)
+      b <- s.selfSyncScrutinee(1, r)
+    } yield (a eq s) && (b eq s)
+    FutureCompleter(c.map(v => assert(v)))
+  }
+
+  // the right part of the assignment has type `x.type | y.type`, the variable is declared `Int`
+  def assignValRefMatch[F[_]: CpsMonad](r: () => F[Int]): F[Int] =
+    val x = 1
+    val y = 2
+    async[F] {
+      var v = 0
+      v = await(r()) match
+        case 1 => { await(r()); x }
+        case _ => y
+      var w = 0
+      w = await(r()) match
+        case 1 => x
+        case _ => y
+      v + w
+    }
+
+  // the variable is declared with a type, which `me` conforms to
+  class SelfAssign {
+    def run(r: () => Future[Int]): Future[Boolean] =
+      val me: this.type = this
+      async[Future] {
+        var v: SelfAssign = new SelfAssign
+        v = await(r()) match
+          case 1 => { await(r()); me }
+          case _ => me
+        v eq this
+      }
+  }
+
+  // the result has type `me.type`: `me` is declared with `this.type`
+  class SelfVal {
+    def viaVal(r: () => Future[Int]): Future[this.type] =
+      val me: this.type = this
+      async[Future] {
+        await(r()) match
+          case 1 => { await(r()); me }
+          case _ => me
+      }
+  }
+
+  @Test def testThisTypeOfVals() = {
+    val r = () => Future.successful(1)
+    val sv = SelfVal()
+    val c = for {
+      a <- SelfAssign().run(r)
+      b <- sv.viaVal(r)
+    } yield (a, b eq sv)
+    FutureCompleter(c.map(v => assert(v == (true, true), s"v=$v")))
+  }
+
+  // not supported (#179): a match with async cases for a variable of a union of singleton types of vals (the workaround: a wider
+  //  type of the variable, as in assignValRefMatch)
+  inline def usesCompilerPlugin: Boolean =
+    scala.compiletime.summonFrom {
+      case given cps.macros.flags.UseCompilerPlugin.type => true
+      case _                                            => false
+    }
+
+  @Test def testSingletonTermTypesAreReported() = {
+    val errors = scala.compiletime.testing.typeCheckErrors("""
+      {
+        val x = 1
+        val y = 2
+        async[Future] {
+          var v: x.type | y.type = x
+          v = await(g(1)) match
+            case 10 => { await(g(2)); y }
+            case _  => x
+          v
+        }
+      }
+    """)
+    // with the compiler plugin, async is transformed after the typer: there are no errors here
+    if (usesCompilerPlugin) then assert(errors.isEmpty, errors.map(_.message).mkString("\n"))
+    else
+      assert(
+        errors.exists(_.message.contains("singleton types of terms are not supported")),
+        errors.map(_.message).mkString("\n")
+      )
+  }
+
+  def litA: "a" = "a"
+
+  def onlyA(s: "a"): String = s + "!"
+
+  def termRefsOfLiteralType[F[_]: CpsMonad](r: () => F[Int]): F[String] =
+    var x: "a" = "a"
+    async[F] {
+      onlyA({ await(r()); litA }) + onlyA({ await(r()); x })
+    }
+
+  def matchOfLiteralTypeVar[F[_]: CpsMonad](r: () => F[Int]): F["a"] =
+    var x: "a" = "a"
+    async[F] {
+      await(r()) match
+        case 1 => { await(r()); x }
+        case _ => x
+    }
+
+  @Test def testSingletonTypesInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- assignValRefMatch[Future](r)
+      c <- termRefsOfLiteralType[Future](r)
+      d <- matchOfLiteralTypeVar[Future](r)
+    } yield (a, c, d)
+    FutureCompleter(c.map(v => assert(v == (2, "a!a!", "a"), s"v=$v")))
   }
 
   // PureEffect is invariant: the literal types of branches are cast to the result type

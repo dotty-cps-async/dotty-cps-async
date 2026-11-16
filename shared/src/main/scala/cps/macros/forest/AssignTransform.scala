@@ -4,6 +4,7 @@ import scala.quoted._
 
 import cps._
 import cps.macros._
+import cps.macros.common._
 import cps.macros.misc._
 
 class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx: TransformationContext[F, T, C]):
@@ -13,8 +14,15 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
   // case Assign(left,right)
   def run(using Quotes)(left: quotes.reflect.Term, right: quotes.reflect.Term): CpsExpr[F, T] =
     import quotes.reflect._
-    // the exact type of the right part: the assigned variable can have a literal or a singleton type
-    right.tpe.asType match
+    // the declared type of the variable is expected (`ValDef(sym, None).tpt.tpe` is the declared type of `sym`). When it has
+    //  singleton types of terms (`var cur: a.type`), the exact type of the right part is used: transformed terms do not keep them
+    //  otherwise (#179); literal types are kept by veryWiden.
+    val declaredType = ValDef(left.symbol, None).tpt.tpe
+    val rightType =
+      if (TransformUtil.veryWiden(declaredType, widenLiterals = false) <:< declaredType) then
+        TransformUtil.veryWiden(right.tpe, Some(declaredType))
+      else right.tpe
+    rightType.asType match
       case '[r] =>
         val cpsRight = Async.nestTransform(right.asExprOf[r], cpsCtx)
         val optQualifier = left match
