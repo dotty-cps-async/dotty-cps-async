@@ -68,7 +68,7 @@ class DefaultFutureGroup[E](parent: FutureScopeContext) extends FutureGroup[E] {
 
    override val eventFlow = EventFlow()(using parent.executionContext) 
 
-   val scopeContext = new FutureScopeContext(parent.monad, parent.executionContext, Some(parent))
+   val scopeContext = new FutureScopeContext(parent.monad, parent.executionContext, Some(parent), parent.trace)
   
    override def cancel(ex: ScopeCancellationException): CancellationResult = 
       scopeContext.cancel(ex)

@@ -19,8 +19,10 @@ class TestExceptionPropagation {
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
+  // fails sometimes in full test runs (TimeoutException after 30 seconds): the trace is printed then
   @Test def testExceptionPropagation() = {
-    val f0 = async[Future].in(Scope){
+    val trace = ScopeTrace()
+    val f0 = async[Future].in(FutureScope(ExecutionContext.Implicits.global, Some(trace))){
 
       FutureScope.spawn[Unit]{
         // give time for second process to spawn
@@ -48,7 +50,7 @@ class TestExceptionPropagation {
       case Success(_) =>
            Failure(new RuntimeException("success expected"));
     }
-    FutureCompleter(f)
+    ScopeTrace.await(f, trace)
   }
 
   @Test def testDisanbleEscalation() = {
