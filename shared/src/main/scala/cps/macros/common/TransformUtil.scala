@@ -223,7 +223,7 @@ object TransformUtil:
     *
     * @param expected
     *   the expected type of the term: a literal type or `this.type`, which it requires (it conforms to the expected type, the widened
-    *   type does not), is not widened; a term ref of a literal type gives the literal type. (A union of literal types can be written
+    *   type does not), is not widened; a term ref of a literal type or of `this.type` gives that type. (A union of literal types can be written
     *   by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft; `this.type` can be the
     *   result type, #166.) Singleton types of other term refs are widened: transformed terms do not keep them (inline proxies, for
     *   example, get new symbols).
@@ -243,8 +243,8 @@ object TransformUtil:
       case ConstantType(_) | ThisType(_) if required(tp) => tp
       case other =>
         tp.widenTermRefByName match
-          case constant @ ConstantType(_) if required(constant) => constant
-          case _                                                => tp.widen
+          case declared @ (ConstantType(_) | ThisType(_)) if required(declared) => declared
+          case _                                                                => tp.widen
 
   /** The type of a tree, built with type `tp`, for the type arguments of `map` / `flatMap`: literal types and `this.type` are kept
     * (they are in `tp`, when an expected type required them, see [[veryWiden]], #166), singleton types of other terms are widened, as by
@@ -260,6 +260,18 @@ object TransformUtil:
         else OrType(nLhs, nRhs)
       case ConstantType(_) | ThisType(_) => tp
       case other                         => tp.widen
+
+  /** The error for a term, which is expected to have singleton types of terms (`x.type | y.type`): the transformed term does not keep
+    * them (https://github.com/dotty-cps-async/dotty-cps-async/issues/179).
+    */
+  def singletonTermTypesMessage(using Quotes)(expected: quotes.reflect.TypeRepr): String =
+    import quotes.reflect._
+    def render(tp: TypeRepr): String = tp match
+      case OrType(lhs, rhs) => s"${render(lhs)} | ${render(rhs)}"
+      case tr: TermRef      => s"${tr.termSymbol.name}.type"
+      case other            => other.show
+    s"the expression is expected to have type ${render(expected)}: singleton types of terms are not supported here " +
+      s"(https://github.com/dotty-cps-async/dotty-cps-async/issues/179); use a wider type, as `${widenTreeType(expected).show}`"
 
   def ensureTyped(using qctx: Quotes)(term: qctx.reflect.Term, tp: qctx.reflect.TypeRepr): qctx.reflect.Term =
     import quotes.reflect._

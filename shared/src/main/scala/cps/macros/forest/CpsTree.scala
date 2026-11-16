@@ -110,11 +110,15 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
                     println(s"candidate = $candidate")
                     throw ex;
                 }
+              else if (!(TransformUtil.widenTreeType(TypeRepr.of[T]) <:< TypeRepr.of[T])) then
+                // T has singleton types of terms, which the transformed tree does not keep
+                throw MacroError(TransformUtil.singletonTermTypesMessage(TypeRepr.of[T]), cpsCtx.patternCode)
               else
                 // we should not cast to F[T]
                 safeSealAs[F[T]](candidate)
             CpsExpr.async[F, T](monad, sealedTransformed)
           } catch {
+            case ex: MacroError => throw ex
             case ex: Throwable =>
               println("failed seal:" + safeShow(transformed))
               println(s"transformed.tpe=${transformed.tpe}")
