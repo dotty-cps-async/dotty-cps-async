@@ -41,9 +41,8 @@ class TestApplyQualifierEvaluationOrder {
     def right(): Future[Int] = { log += "right"; Future.successful(3) }
     val c = async[Future] {
       val r = track().sum(left(), await(right()))
-      // `distinct`: the plugin evaluates `left()` once more, after `right` (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
-      assert(log.distinct.toList == List("qualifier", "left", "right"), s"log=$log")
-      assert(log.count(_ == "qualifier") == 1, s"log=$log")
+      // `left()` is evaluated once (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
+      assert(log.toList == List("qualifier", "left", "right"), s"log=$log")
       assert(r == 5, s"r=$r")
     }
     FutureCompleter(c)
@@ -88,6 +87,30 @@ class TestApplyQualifierEvaluationOrder {
       assert(h2.n == 0, s"h2.n=${h2.n}")
     }
     FutureCompleter(c)
+  }
+
+  // the qualifier is a parameter of a lambda, in which the async block is expanded (the lambda's type is not known yet)
+  @Test def testLambdaParamQualifier() = {
+    val hs = List(new Holder, new Holder)
+    val c = Future.sequence(hs.map { h =>
+      async[Future] {
+        h.set(await(Future.successful(5)))
+      }
+    })
+    FutureCompleter(c.map { _ =>
+      assert(hs.map(_.n) == List(5, 5), s"hs=${hs.map(_.n)}")
+    })
+  }
+
+  // the qualifier is a parameter of a method with an inferred result type, which is the async block
+  @Test def testInferredResultMethodParamQualifier() = {
+    def run(h: Holder) = async[Future] {
+      h.set(await(Future.successful(3)))
+    }
+    val h = new Holder
+    FutureCompleter(run(h).map { _ =>
+      assert(h.n == 3, s"h.n=${h.n}")
+    })
   }
 
   // compound assignment `x += await(...)` is `x = x.+(await(...))`: the old value of `x` is used

@@ -14,6 +14,9 @@ import cps.plugin.forest.application.*
 /** A sync qualifier of an assignment `q.f = ...` or a method call `q.m(...)` with an async right part or argument is bound to a val
   * before the async part, to keep the Scala evaluation order, unless it is a pure path (dotty's `isPurePath`) or not a value. See
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/165 and https://github.com/dotty-cps-async/dotty-cps-async/issues/169
+  *
+  * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.apply` and
+  * https://github.com/dotty-cps-async/dotty-cps-async/issues/170).
   */
 object QualifierBinding {
 

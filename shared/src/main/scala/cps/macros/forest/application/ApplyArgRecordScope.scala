@@ -586,13 +586,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
         InlinedCpsTree(tree.owner, tree.origin, tree.bindings, na)
   }
 
+  /** A sync argument, which gives the same value without other effects when it is evaluated after a later async argument: a pure
+    * path (a val, `this`, a literal), as a qualifier (see [[QualifierPurity]]). Other sync arguments (a var, a def, a lazy val, a
+    * by-name parameter, a method call, ...) are evaluated into a val before the async argument, to keep the Scala evaluation order
+    * (https://github.com/dotty-cps-async/dotty-cps-async/issues/170).
+    */
   def termIsNoOrderDepended(x: Term): Boolean =
-    x match {
-      case Literal(_) => true
-      case Ident(_) =>
-        if (x.symbol.isValDef) then x.symbol.flags.is(Flags.Mutable)
-        else if x.symbol.isDefDef then true
-        else if x.symbol.isBind then true
-        else false
-      case _ => false
-    }
+    QualifierPurity.of(using qctx)(x) == QualifierPurity.PurePath

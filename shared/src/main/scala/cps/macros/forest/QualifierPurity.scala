@@ -26,17 +26,9 @@ private[forest] object QualifierPurity:
   def of(using Quotes)(term: quotes.reflect.Term): QualifierPurity =
     import quotes.reflect._
     // the reference itself has a TermRef type; the declared type of a by-name parameter is a by-name type.
-    // (`Symbol.info` is experimental, `NoPrefix.memberType` fails: a method parameter's type is taken from the method type,
-    // as in MethodParamsDescriptor.isByName)
-    def methodParamType(sym: Symbol): Option[TypeRepr] =
-      def find(tpe: TypeRepr): Option[TypeRepr] = tpe match
-        case mt: MethodType =>
-          mt.paramNames.indexOf(sym.name) match
-            case -1 => find(mt.resType)
-            case i  => Some(mt.paramTypes(i))
-        case pt: PolyType => find(pt.resType)
-        case _            => None
-      find(sym.owner.termRef.widen)
+    // (`Symbol.info` is experimental, `NoPrefix.memberType` fails: the declared type of a local parameter is the type of a ValDef
+    // tree built from its symbol. Not the type of the parameter in the method type of its owner: the async block can be expanded
+    // while the owner is typed, a lambda or a method with an inferred result type, and its type is not known yet.)
     def isByNameType(tpe: TypeRepr): Boolean = tpe match
       case ByNameType(_) => true
       case _             => false
@@ -45,7 +37,7 @@ private[forest] object QualifierPurity:
       case TermRef(prefix, _) =>
         prefix match
           case NoPrefix() =>
-            if (term.symbol.flags.is(Flags.Param)) then methodParamType(term.symbol).map(isByNameType) else Some(false)
+            if (term.symbol.flags.is(Flags.Param)) then Some(isByNameType(ValDef(term.symbol, None).tpt.tpe)) else Some(false)
           case _ => Some(isByNameType(prefix.memberType(term.symbol)))
       case _ => None
     // a package, the statics of a Java class and a Scala.js global scope object are not values: never bound, whatever the prefix is

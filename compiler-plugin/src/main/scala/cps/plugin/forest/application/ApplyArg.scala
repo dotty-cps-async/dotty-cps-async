@@ -108,7 +108,6 @@ object ApplyArg {
       isByName: Boolean,
       isDirectContext: Boolean,
       owner: Symbol,
-      dependFromLeft: Boolean,
       named: Option[TermName],
       nesting: Int
   )(using Context, CpsTopLevelContext): ApplyArg = {
@@ -124,7 +123,7 @@ object ApplyArg {
           paramType,
           elems.zipWithIndex.map { (p, i) =>
             val newName = (paramName.toString + i.toString).toTermName
-            ApplyArg(p, newName, elemtpt.tpe, isByName, isDirectContext, owner, dependFromLeft, None, nesting)
+            ApplyArg(p, newName, elemtpt.tpe, isByName, isDirectContext, owner, None, nesting)
           },
           elemtpt,
           expr,
@@ -146,8 +145,17 @@ object ApplyArg {
               //  ???
               // }
               cpsExpr.asyncKind match
-                case AsyncKind.Sync if !dependFromLeft =>
-                  PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
+                case AsyncKind.Sync =>
+                  // A sync argument, which is not a pure path, is evaluated into a val before the call, when the arguments are
+                  // evaluated before it (the call has an async argument or a shifted lambda): a later async argument can change
+                  // its value (https://github.com/dotty-cps-async/dotty-cps-async/issues/170). Not for the direct context: it is
+                  // always synthetic and substituted by the real context in the code, a val would break this substitution.
+                  val tree = cpsExpr.unpure.get
+                  if (isDirectContext || !QualifierBinding.needsBinding(tree)) then
+                    PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
+                  else
+                    val valDef = QualifierBinding.valDef(tree, paramName.toString, expr.span, owner)
+                    PlainApplyArg(paramName, paramType, cpsExpr, Some(valDef), isDirectContext, named)
                 case AsyncKind.AsyncLambda(_) =>
                   PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
                 case _ =>
@@ -236,8 +244,6 @@ case class PlainApplyArg(
     *
     * //Are we change symbol when do changeOwner to tree ? If yes, we should be extremally careful with different refs to
     * optIdentSym. Maybe better do expr function from sym ?
-    *
-    * TODO: dependFromLeft
     */
   override def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using
       Context,
@@ -246,9 +252,14 @@ case class PlainApplyArg(
     import AsyncKind.*
     expr.asyncKind match
       case Sync =>
-        expr.unpure match
-          case Some(tree) => tree
-          case None       => throw CpsTransformException("Impossibke: syn expression without unpure", expr.origin.srcPos)
+        optIdentValDef match
+          // the val of a sync argument is evaluated before the call, when the call is not sync (`genApplication`): the call uses
+          // it, the argument is evaluated once (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
+          case Some(valDef) if callMode != ApplyArgCallMode.SYNC => ref(valDef.symbol).withSpan(expr.origin.span)
+          case _ =>
+            expr.unpure match
+              case Some(tree) => tree
+              case None       => throw CpsTransformException("Impossibke: syn expression without unpure", expr.origin.srcPos)
       case Async(_) => ref(optIdentValDef.get.symbol).withSpan(expr.origin.span)
       case AsyncLambda(internal) =>
         if (callMode == ApplyArgCallMode.ASYNC_SHIFT) then expr.transformed
