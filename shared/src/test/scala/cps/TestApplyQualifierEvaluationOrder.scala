@@ -41,9 +41,8 @@ class TestApplyQualifierEvaluationOrder {
     def right(): Future[Int] = { log += "right"; Future.successful(3) }
     val c = async[Future] {
       val r = track().sum(left(), await(right()))
-      // `distinct`: the plugin evaluates `left()` once more, after `right` (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
-      assert(log.distinct.toList == List("qualifier", "left", "right"), s"log=$log")
-      assert(log.count(_ == "qualifier") == 1, s"log=$log")
+      // `left()` is evaluated once (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
+      assert(log.toList == List("qualifier", "left", "right"), s"log=$log")
       assert(r == 5, s"r=$r")
     }
     FutureCompleter(c)
@@ -88,6 +87,30 @@ class TestApplyQualifierEvaluationOrder {
       assert(h2.n == 0, s"h2.n=${h2.n}")
     }
     FutureCompleter(c)
+  }
+
+  // the qualifier is a parameter of a lambda, in which the async block is expanded (the lambda's type is not known yet)
+  @Test def testLambdaParamQualifier() = {
+    val hs = List(new Holder, new Holder)
+    val c = Future.sequence(hs.map { h =>
+      async[Future] {
+        h.set(await(Future.successful(5)))
+      }
+    })
+    FutureCompleter(c.map { _ =>
+      assert(hs.map(_.n) == List(5, 5), s"hs=${hs.map(_.n)}")
+    })
+  }
+
+  // the qualifier is a parameter of a method with an inferred result type, which is the async block
+  @Test def testInferredResultMethodParamQualifier() = {
+    def run(h: Holder) = async[Future] {
+      h.set(await(Future.successful(3)))
+    }
+    val h = new Holder
+    FutureCompleter(run(h).map { _ =>
+      assert(h.n == 3, s"h.n=${h.n}")
+    })
   }
 
   // compound assignment `x += await(...)` is `x = x.+(await(...))`: the old value of `x` is used
@@ -307,9 +330,66 @@ class TestApplyQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // a case class instance as the qualifier: a method call in the first argument list of a curried case class, initialization code
+  @Test def testCaseClassQualifiers() = {
+    val log = ArrayBuffer[String]()
+    def first(): Int = { log += "first"; 1 }
+    val c = async[Future] {
+      val r1 = TaggedCell(first())(1).plus(await({ log += "second"; Future.successful(2) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r1 == 4, s"r1=$r1")
+      log.clear()
+      val r2 = LoggedCell(1, log).plus(await({ log += "second"; Future.successful(2) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r2 == 3, s"r2=$r2")
+    }
+    FutureCompleter(c)
+  }
+
+  // a case class instance as the qualifier, which companion object has initialization code: it is initialized before the argument
+  @Test def testCaseClassCompanionWithInitQualifier() = {
+    val c = async[Future] {
+      val r = InitCompanionCell(1).plus(await({ companionCellLog += "second"; Future.successful(2) }))
+      assert(companionCellLog.toList == List("init", "second"), s"log=$companionCellLog")
+      assert(r == 3, s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // the `StringContext` of an interpolator is not bound: the `f` interpolator needs it as a literal (and the type of the argument)
+  @Test def testStringInterpolators() = {
+    val c = async[Future] {
+      val f1 = f"x${await(Future.successful(2))}%03d"
+      assert(f1 == "x002", s"f1=$f1")
+      val s1 = s"a${await(Future.successful(1))}b${await(Future.successful("c"))}"
+      assert(s1 == "a1bc", s"s1=$s1")
+    }
+    FutureCompleter(c)
+  }
+
 }
 
 object TestApplyQualifierEvaluationOrder {
+
+  case class TaggedCell(x: Int)(val y: Int) {
+    def plus(z: Int): Int = x + y + z
+  }
+
+  case class LoggedCell(x: Int, log: ArrayBuffer[String]) {
+    log += "first"
+    def plus(z: Int): Int = x + z
+  }
+
+  // only `testCaseClassCompanionWithInitQualifier` touches InitCompanionCell
+  val companionCellLog = ArrayBuffer[String]()
+
+  case class InitCompanionCell(x: Int) {
+    def plus(z: Int): Int = x + z
+  }
+
+  object InitCompanionCell {
+    companionCellLog += "init"
+  }
 
   class Holder {
     var n: Int = 0

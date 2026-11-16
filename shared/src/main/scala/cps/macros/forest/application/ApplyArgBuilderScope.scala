@@ -150,17 +150,22 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
         cpsCtx.log(s"buildCpsTreeApplyArgRecord: t = ${t.show}")
         cpsCtx.log(s"acc = ${acc}")
 
+      // the classification of a sync argument (see `termIsNoOrderDepended`), computed once
+      lazy val syncPurity: Option[QualifierPurity] =
+        if (termCpsTree.isAsync) then None else Some(QualifierPurity.of(using qctx)(t))
       if (paramsDescriptor.isByName(acc.paramIndex)) acc.advance(ApplyArgByNameRecord(t, acc.posIndex, termCpsTree, None, None))
-      else if (!termCpsTree.isAsync && termIsNoOrderDepended(t)) then
+      else if (syncPurity.contains(QualifierPurity.PurePath)) then
         if (!termCpsTree.isChanged) then
-          acc.advance(ApplyArgNoPrecalcTermRecord(t, acc.posIndex, false, paramsDescriptor.isCpsDirect(acc.paramIndex)))
+          acc.advance(ApplyArgNoPrecalcTermRecord(t, acc.posIndex, false, paramsDescriptor.isCpsDirect(acc.paramIndex), true))
         else
+          val changed = termCpsTree.syncOrigin.get
           acc.advance(
             ApplyArgNoPrecalcTermRecord(
-              termCpsTree.syncOrigin.get,
+              changed,
               acc.posIndex,
               true,
-              paramsDescriptor.isCpsDirect(acc.paramIndex)
+              paramsDescriptor.isCpsDirect(acc.paramIndex),
+              termIsNoOrderDepended(changed)
             )
           )
       else if (termCpsTree.isLambda)
@@ -175,7 +180,13 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
             throw MacroError(s"Lambda expected", posExpr(t))
       else
         val argName: String = "a" + acc.posIndex // TODO: get name from params
-        val widenType = TransformUtil.veryWiden(t.tpe, expectedType)
+        val widened = TransformUtil.veryWiden(t.tpe, expectedType)
+        // an argument, which is a stable path (a lazy val, an object), keeps its singleton type: the types of the next parameters
+        // can depend on it (`def g(x: A)(y: x.T)`), as for a bound qualifier. (Not other trees with a singleton type, e.g. a
+        // block `{ ...; x }`: the transformed tree can have the widened type.)
+        val widenType =
+          if (syncPurity.contains(QualifierPurity.IdempotentPath)) then QualifierPurity.bindingType(using qctx)(t, widened)
+          else widened
         val symbol = Symbol.newVal(Symbol.spliceOwner, argName, widenType, Flags.EmptyFlags, Symbol.noSymbol)
         val valDef = symbol.tree match
           case v @ ValDef(_, _, _) => v

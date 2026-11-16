@@ -357,7 +357,7 @@ object ApplyTransform {
     * @param owner
     * @param nesting
     * @param fun
-    * @param argss
+    * @param argss0
     *   list of arguments, starting from the first non-type argument lists.
     * @param callMode
     * @return
@@ -367,10 +367,16 @@ object ApplyTransform {
       owner: Symbol,
       nesting: Int,
       fun: Tree,
-      argss: List[ApplyArgList],
+      argss0: List[ApplyArgList],
       callMode: FunCallMode
   )(using Context, CpsTopLevelContext): CpsTree = {
     val tctx = summon[CpsTopLevelContext]
+    // with an async argument (evaluated before the call), sync arguments which are not pure paths are evaluated before it, as the
+    // qualifier (https://github.com/dotty-cps-async/dotty-cps-async/issues/170). Not with only a shifted lambda: the arguments
+    // are evaluated with the call, after the qualifier, as in the macro.
+    val argss =
+      if (QualifierBinding.hasAsyncArgBeforeCall(argss0)) then argss0.map(_.withSyncBindings)
+      else argss0
     val runShiftAsyncLambda = argss.exists(_.containsNotUnshiftableAsyncLambda)
     val containsAsync = argss.exists(_.isAsync)
     val retval = if (runShiftAsyncLambda) {
@@ -966,17 +972,24 @@ object ApplyTransform {
             val (prefixCpsTree, prefixVal) = pre
             Log.trace(s"genApplication: oneApplyPrefix for ${e.show}", nesting)
 
-            // TODO: optimise.
-            //  (mb - introduce flaMap as operations, which automatically do optimizations)
-            FlatMapCpsTree(
-              origin,
-              owner,
-              prefixCpsTree,
-              FlatMapCpsTreeArgument(
-                Some(prefixVal),
-                tail
-              )
-            )
+            prefixCpsTree.asyncKind match
+              case AsyncKind.Sync =>
+                // a bound sync argument: `{ val a = arg; tail }`, without a monadic step (the val keeps its type: a singleton
+                // type of a stable path, on which the types of the next parameters can depend). The origin is the whole call,
+                // as for a bound qualifier: `origin` of a first argument list of a curried call has a method type.
+                QualifierBinding.withBinding(argss.last.origin, owner, prefixVal, tail)
+              case _ =>
+                // TODO: optimise.
+                //  (mb - introduce flaMap as operations, which automatically do optimizations)
+                FlatMapCpsTree(
+                  origin,
+                  owner,
+                  prefixCpsTree,
+                  FlatMapCpsTreeArgument(
+                    Some(prefixVal),
+                    tail
+                  )
+                )
           }
           if (e.enclosingInlined.isEmpty) then withPrevArgs
           else wrapInInlined(e.enclosingInlined, withPrevArgs)

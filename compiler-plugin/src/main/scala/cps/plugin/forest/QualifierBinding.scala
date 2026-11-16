@@ -12,8 +12,13 @@ import cps.plugin.*
 import cps.plugin.forest.application.*
 
 /** A sync qualifier of an assignment `q.f = ...` or a method call `q.m(...)` with an async right part or argument is bound to a val
-  * before the async part, to keep the Scala evaluation order, unless it is a pure path (dotty's `isPurePath`) or not a value. See
+  * before the async part, to keep the Scala evaluation order, unless it is a pure expression or not a value. A pure expression
+  * (dotty's `isPureExpr`) has no effects and depends only on stable paths: a pure path, or a case class apply without
+  * initialization code with pure arguments (`StringContext("a", "b")` of an interpolator, which must stay a literal for `f`). See
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/165 and https://github.com/dotty-cps-async/dotty-cps-async/issues/169
+  *
+  * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.withSyncBinding` and
+  * https://github.com/dotty-cps-async/dotty-cps-async/issues/170).
   */
 object QualifierBinding {
 
@@ -31,7 +36,32 @@ object QualifierBinding {
     }
 
   def needsBinding(qual: Tree)(using Context): Boolean =
-    !isPurePath(path(qual)) && !isNoValue(qual)
+    !isPure(path(qual)) && !isNoValue(qual)
+
+  /** A pure expression (dotty's `isPureExpr`): no effects, depends only on stable paths. Two cases differ from dotty's `exprPurity`
+    * (3.9): a package is a pure path (`refPurity` gives an idempotent path for it, so `_root_.scala.StringContext` would be bound),
+    * and a pure apply (a case class without initialization code) can have varargs (`exprPurity` has no case for a `SeqLiteral`):
+    * `_root_.scala.StringContext("a", "b")` of an interpolator is pure.
+    */
+  private def isPure(tree: Tree)(using Context): Boolean =
+    tree match
+      case _: Literal | _: This | _: Super    => true
+      case _ if tree.symbol.is(Flags.Package) => true
+      case _: Ident                           => isPureRef(tree)
+      case Select(qual, _)                    => isPureRef(tree) && isPure(qual)
+      case Typed(expr, _)                     => isPure(expr)
+      // a method with type arguments, applied later
+      case TypeApply(fn, _) => tree.tpe.widen.isInstanceOf[Types.MethodOrPoly] && isPure(fn)
+      case Apply(fn, args) =>
+        (isPureApply(tree, fn) || tree.tpe.widen.isInstanceOf[Types.MethodOrPoly]) && isPure(fn) && args.forall(isPureArg)
+      case _ => isPureExpr(tree)
+
+  private def isPureArg(arg: Tree)(using Context): Boolean =
+    arg match
+      case Typed(SeqLiteral(elems, _), _) => elems.forall(isPure)
+      case SeqLiteral(elems, _)           => elems.forall(isPure)
+      case NamedArg(_, expr)              => isPureArg(expr)
+      case _                              => isPure(arg)
 
   /** The path, which a qualifier denotes: a member imported from a path (`import O.*; h`) is selected from it. */
   private def path(qual: Tree)(using Context): Tree =
