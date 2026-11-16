@@ -63,7 +63,7 @@ class TestTenUrls {
     }
 
     @Test def testRandomBehavious() = {
-      FutureScopeContext.debugCancellation = true
+      val trace = ScopeTrace()
       val random = new Random(1)
       val urlsData = (for(i <- 1 to 100) yield {
            val p = random.nextDouble()
@@ -79,7 +79,7 @@ class TestTenUrls {
       } ).toMap
       val mockApi = NetworkApiMock(urlsData)
       val urls = urlsData.keys.toList
-      val f = async[Future].in(Scope) {
+      val f = async[Future].in(FutureScope(ExecutionContext.Implicits.global, Some(trace))) {
           FutureScope.spawnTimeout(5.seconds)
           val first10 = await(TenUrls.readFirstN(mockApi,urls,10))
           assert(first10.length == 10)
@@ -89,9 +89,9 @@ class TestTenUrls {
       val nSuccess = urlsData.count(_._2.isInstanceOf[FetchResult.Success])
       val nFailure = urlsData.count(_._2.isInstanceOf[FetchResult.Failure])
       val nInfinite = urlsData.count(_._2 == FetchResult.InfiniteWait)
-      FutureCompleter(f.transform{
+      // on a failure or a timeout, the trace of the scope is printed by ScopeTrace.await
+      ScopeTrace.await(f.transform{
         case Success(x) =>
-           FutureScopeContext.debugLog.clear()
            Success(x)
         case Failure(ex) =>
            System.err.println("=== TestTenUrls.testRandomBehavious failed ===")
@@ -99,10 +99,9 @@ class TestTenUrls {
            System.err.println(s"Exception message: ${ex.getMessage}")
            System.err.println(s"Exception cause: ${Option(ex.getCause).map(c => s"${c.getClass.getName}: ${c.getMessage}").getOrElse("null")}")
            System.err.println(s"urlsData distribution: success=$nSuccess, failure=$nFailure, infinite=$nInfinite")
-           FutureScopeContext.dumpDebugLog()
            System.err.println("=== end diagnostic info ===")
            Failure(ex)
-      }.andThen { _ => FutureScopeContext.debugCancellation = false })
+      }, trace)
     }
 
 

@@ -21,7 +21,7 @@ import cps.testconfig.given
 /**
  * ScopedContext - bring structured concurrency primitives for futures.
  **/
-class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentScope: Option[FutureScopeContext] = None) extends CpsTryMonadContext[Future]
+class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentScope: Option[FutureScopeContext] = None, val trace: Option[ScopeTrace] = None) extends CpsTryMonadContext[Future]
                                                                                                   with ExecutionContextProvider  
                                                                                                   with Cancellable {
 
@@ -33,6 +33,16 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
   //private val contCallbacks: ConcurrentLinkedDeque[(FutureScopeContext) ?=> Future[Unit]]
   private val finishCallbacks: ConcurrentLinkedDeque[() => Future[Unit]] = new ConcurrentLinkedDeque()
   private val finishPromise: Promise[Unit] = Promise()
+
+  val id: Int = FutureScopeContext.nextId.incrementAndGet()
+  trace.foreach(_.register(this))
+  traceEvent(s"created, parent=${parentScope.map(p => s"scope#${p.id}").getOrElse("-")}")
+
+  private def traceEvent(event: => String): Unit =
+    trace.foreach(_(this, event))
+
+  def debugState: String =
+    s"scope#$id: state=${stateRef.get}, cancellables=${cancellableFutures.size}, nonCancellables=${nonCancellables.size}, finished=${finishPromise.isCompleted}"
   
   def executionContext: ExecutionContext = ec
 
@@ -99,28 +109,29 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
             case FutureScopeContext.State.Active =>  
                 p.future
             case FutureScopeContext.State.Cancelling(e) =>    
+                traceEvent(s"await rejected after registration: cancelling")
                 Future failed e      
             case FutureScopeContext.State.Cancelled(e) =>    
+                traceEvent(s"await rejected after registration: cancelled")
                 Future failed e      
             case _ =>
+                traceEvent(s"await rejected after registration: finished")
                 Future failed ScopeCancellationException()
       case FutureScopeContext.State.Cancelling(e) =>
+        traceEvent(s"await rejected: cancelling")
         Future failed e
       case FutureScopeContext.State.Cancelled(e) =>
+        traceEvent(s"await rejected: cancelled")
         Future failed e
       case _ =>
         // scope is finished. 
+        traceEvent(s"await rejected: finished")
         Future failed ScopeCancellationException("scope finished")
   }
 
 
   def cancel(ex: ScopeCancellationException): CancellationResult = {
-    if (FutureScopeContext.debugCancellation) {
-      val nCancellable = cancellableFutures.size()
-      val nNonCancellable = nonCancellables.size()
-      val stack = Thread.currentThread().getStackTrace.take(10).map(_.toString).mkString("\n    ")
-      FutureScopeContext.debugLog.add(s"[FutureScopeContext.cancel] ex=${ex.getMessage}, cause=${Option(ex.getCause).map(_.getClass.getName)}, state=${stateRef.get()}, cancellables=$nCancellable, nonCancellables=$nNonCancellable\n    $stack")
-    }
+    traceEvent(s"cancel(${ex.getMessage}): state=${stateRef.get()}, cancellables=${cancellableFutures.size()}, nonCancellables=${nonCancellables.size()}")
 
     given ExecutionContext = ec
 
@@ -155,10 +166,12 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
                    )
       if (finish.isCompleted) then 
         stateRef.set(FutureScopeContext.State.Cancelled(ex))
+        traceEvent("cancelled")
         CancellationResult.Cancelled
       else 
         finish.onComplete{ _ =>
           stateRef.set(FutureScopeContext.State.Cancelled(ex))
+          traceEvent("cancelled (children finished)")
         }    
         CancellationResult.Cancelling(finish)
     else if (stateRef.get().nn.isInstanceOf[FutureScopeContext.State.Cancelling]) then  
@@ -184,7 +197,8 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
     given ExecutionContext = executionContext
     stateRef.get() match
       case FutureScopeContext.State.Active =>
-        val c = new FutureScopeContext(m, executionContext, Some(this))
+        val c = new FutureScopeContext(m, executionContext, Some(this), trace)
+        traceEvent(s"spawn scope#${c.id}")
         val p = Promise[A]()
         p.completeWith(c.run(f))
         val childRecord = DelegatedCancellableFuture(p.future,
@@ -198,22 +212,31 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
       case FutureScopeContext.State.Cancelling(e) =>
         // TODO: think, what better throw -- cancellable excwption or illegal-state ? 
         //throw new IllegalStateException("f is already cancelling", e)
+        traceEvent("spawn rejected: cancelling")
         throw e
       case FutureScopeContext.State.Cancelled(e) =>  
         //throw new IllegalStateException("f is already cancelled", e)
+        traceEvent("spawn rejected: cancelled")
         throw e
       case FutureScopeContext.State.Finished =>  
+        traceEvent("spawn rejected: finished")
         throw new IllegalStateException("f is already finished")
   }
 
   def spawnDelay(duration: FiniteDuration): CancellableFuture[FiniteDuration] = {
-    val retval = TimeOperations.waiting(duration)(duration)
+    traceEvent(s"delay $duration scheduled")
+    val retval = TimeOperations.waiting(duration){
+      traceEvent(s"delay $duration fired")
+      duration
+    }
     addCancellableFuture(retval)
     retval
   }
 
   def spawnTimeout(duration: FiniteDuration): CancellableFuture[Nothing] = {
+    traceEvent(s"timeout $duration scheduled")
     val retval = TimeOperations.waiting(duration){
+      traceEvent(s"timeout $duration fired")
       this.cancel(ScopeCancellationException("spawn timeout",new TimeoutException()))  
       throw new TimeoutException()
     }
@@ -236,7 +259,9 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
 
   def timedAwaitAsync[A](fa: Future[A], timeout: FiniteDuration): Future[A] = {
     val p = Promise[A]()
+    traceEvent(s"timedAwait $timeout scheduled")
     val retval = TimeOperations.waiting(timeout){
+        traceEvent(s"timedAwait $timeout fired")
         p.tryFailure(TimeoutException())
     }
     addCancellableFuture(retval)
@@ -284,7 +309,10 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
               case NoEscalateExceptionWrapper(wrapped) =>
                 wrapped
               case uhex:UnhandledExceptionInChildScope =>
-                parentScope.foreach(_.cancel(uhex))
+                parentScope.foreach{ scope =>
+                  traceEvent(s"escalate to scope#${scope.id}: ${uhex.getMessage}")
+                  scope.cancel(uhex)
+                }
                 ex
               case scex: ScopeCancellationException =>
                 // don't touch parent scope for other cancellation exceptions
@@ -292,6 +320,7 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
               case _ =>
                 parentScope.foreach{ scope =>
                   val uhex = UnhandledExceptionInChildScope(ex, this)
+                  traceEvent(s"escalate to scope#${scope.id}: ${ex.getMessage}")
                   val r = scope.cancel(uhex)
                 }
                 ex
@@ -316,6 +345,7 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
           Future failed ex
       }
       fThis.transformWith{ v =>
+          traceEvent(s"body completed: ${v.fold(ex => s"Failure(${ex.getMessage})", _ => "Success")}, state=${stateRef.get}")
           stateRef.get match
               case FutureScopeContext.State.Active =>
                   cancel(ScopeFinished()) match
@@ -352,17 +382,7 @@ class FutureScopeContext(m: CpsTryMonad[Future], ec: ExecutionContext, parentSco
 
 object FutureScopeContext {
 
-   // When non-null, cancel() calls append diagnostic info here instead of printing.
-   // On test failure, call dumpDebugLog() to print collected entries.
-   val debugLog: java.util.concurrent.ConcurrentLinkedQueue[String] = new java.util.concurrent.ConcurrentLinkedQueue[String]()
-
-   var debugCancellation: Boolean = false
-
-   def dumpDebugLog(): Unit =
-     var entry = debugLog.poll()
-     while entry != null do
-       System.err.println(entry)
-       entry = debugLog.poll()
+   private[futureScope] val nextId = new AtomicInteger(0)
 
    object StateFlags: 
      final val Active = 1

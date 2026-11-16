@@ -18,12 +18,13 @@ import org.junit.{Test,Ignore}
 import org.junit.Assert._
 
 
-class FutureScope(ec: ExecutionContext) extends CpsMonadContextProvider[Future] {
+/** @param trace events of the scope and its children, for diagnostics (see ScopeTrace) */
+class FutureScope(ec: ExecutionContext, trace: Option[ScopeTrace] = None) extends CpsMonadContextProvider[Future] {
   
    override type Context = FutureScopeContext
 
    override def  contextualize[A](m: CpsTryMonad[Future], fa: Context => Future[A]): Future[A] = {
-      val fsc = new FutureScopeContext(m, ec)
+      val fsc = new FutureScopeContext(m, ec, None, trace)
       fsc.run(fa)
    }
 

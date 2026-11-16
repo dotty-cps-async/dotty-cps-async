@@ -39,9 +39,12 @@ object TimeOperations {
                         })
   }
  
+  /** The name of the timer thread (shown by ScopeTrace) */
+  val timerThreadName = "futureScope-timer"
+
   private lazy val se = {
     // TODO: resolver set scheduler or get parameters from config
-    Executors.newScheduledThreadPool(1).nn 
+    Executors.newScheduledThreadPool(1, (r: Runnable) => new Thread(r, timerThreadName)).nn 
   }
  
 
