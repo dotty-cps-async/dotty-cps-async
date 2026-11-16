@@ -21,6 +21,9 @@ sealed trait ApplyArgList {
   def origin: Tree
   def isTypeParams: Boolean
   def isPlainParams: Boolean
+
+  /** The arguments with vals for sync arguments, which are not pure paths (see `ApplyArg.withSyncBinding`). */
+  def withSyncBindings(using Context, CpsTopLevelContext): ApplyArgList
 }
 
 case class ApplyTermArgList(
@@ -36,6 +39,9 @@ case class ApplyTermArgList(
   override def origin = originApplyTerm
   override def isTypeParams = false
   override def isPlainParams = true
+
+  override def withSyncBindings(using Context, CpsTopLevelContext): ApplyArgList =
+    copy(args = args.map(_.withSyncBinding))
 
   override def show(using Context): String = {
     s"ApplyTermArgList(${args.map(_.show)})"
@@ -58,6 +64,7 @@ case class ApplyTypeArgList(
   }
   override def isTypeParams = true
   override def isPlainParams = false
+  override def withSyncBindings(using Context, CpsTopLevelContext): ApplyArgList = this
 }
 
 object ApplyTermArgList {

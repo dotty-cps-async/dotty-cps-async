@@ -15,7 +15,7 @@ import cps.plugin.forest.application.*
   * before the async part, to keep the Scala evaluation order, unless it is a pure path (dotty's `isPurePath`) or not a value. See
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/165 and https://github.com/dotty-cps-async/dotty-cps-async/issues/169
   *
-  * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.apply` and
+  * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.withSyncBinding` and
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/170).
   */
 object QualifierBinding {

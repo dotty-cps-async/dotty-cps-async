@@ -175,7 +175,14 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
             throw MacroError(s"Lambda expected", posExpr(t))
       else
         val argName: String = "a" + acc.posIndex // TODO: get name from params
-        val widenType = TransformUtil.veryWiden(t.tpe, expectedType)
+        val widened = TransformUtil.veryWiden(t.tpe, expectedType)
+        // an argument, which is a stable path (a lazy val, an object), keeps its singleton type: the types of the next parameters
+        // can depend on it (`def g(x: A)(y: x.T)`), as for a bound qualifier. (Not other trees with a singleton type, e.g. a
+        // block `{ ...; x }`: the transformed tree can have the widened type.)
+        val widenType =
+          if (!termCpsTree.isAsync && QualifierPurity.of(using qctx)(t) == QualifierPurity.IdempotentPath) then
+            QualifierPurity.bindingType(using qctx)(t, widened)
+          else widened
         val symbol = Symbol.newVal(Symbol.spliceOwner, argName, widenType, Flags.EmptyFlags, Symbol.noSymbol)
         val valDef = symbol.tree match
           case v @ ValDef(_, _, _) => v

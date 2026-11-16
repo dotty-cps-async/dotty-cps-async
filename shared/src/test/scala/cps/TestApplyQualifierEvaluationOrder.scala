@@ -330,9 +330,34 @@ class TestApplyQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // a case class instance as the qualifier: a method call in the first argument list of a curried case class, initialization code
+  @Test def testCaseClassQualifiers() = {
+    val log = ArrayBuffer[String]()
+    def first(): Int = { log += "first"; 1 }
+    val c = async[Future] {
+      val r1 = TaggedCell(first())(1).plus(await({ log += "second"; Future.successful(2) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r1 == 4, s"r1=$r1")
+      log.clear()
+      val r2 = LoggedCell(1, log).plus(await({ log += "second"; Future.successful(2) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r2 == 3, s"r2=$r2")
+    }
+    FutureCompleter(c)
+  }
+
 }
 
 object TestApplyQualifierEvaluationOrder {
+
+  case class TaggedCell(x: Int)(val y: Int) {
+    def plus(z: Int): Int = x + y + z
+  }
+
+  case class LoggedCell(x: Int, log: ArrayBuffer[String]) {
+    log += "first"
+    def plus(z: Int): Int = x + z
+  }
 
   class Holder {
     var n: Int = 0

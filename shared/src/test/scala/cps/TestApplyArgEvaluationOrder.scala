@@ -149,7 +149,7 @@ class TestApplyArgEvaluationOrder {
     FutureCompleter(c)
   }
 
-  // vals, a literal and `this` stay in the call
+  // vals, a literal, `this`, a spliced val and a case class without initialization code stay in the call
   @Test def testPurePathArgs() = {
     val c = async[Future] {
       val h = new Holder
@@ -158,18 +158,70 @@ class TestApplyArgEvaluationOrder {
       assert(r == (3, 4, 5), s"r=$r")
       val s = await(h.withThis())
       assert(s == (h, 6), s"s=$s")
+      val xs = Seq(1, 2)
+      val v = curriedVarargs(xs*)(await(Future.successful(7)))
+      assert(v == (Seq(1, 2), 7), s"v=$v")
+      val p = point(Point(y, 2), await(Future.successful(8)))
+      assert(p == (3, 2, 8), s"p=$p")
     }
     FutureCompleter(c)
   }
 
-  // the call with a sync argument and a shifted lambda (no async argument): the argument is evaluated once
-  @Test def testMethodCallArgWithShiftedLambda() = {
+  // a curried case class with a method call in its first argument list
+  @Test def testCurriedCaseClassArg() = {
     val log = ArrayBuffer[String]()
     def first(): Int = { log += "first"; 1 }
     val c = async[Future] {
-      val r = List(2, 3).foldLeft(first())((s, e) => s + await(Future.successful(e)))
-      assert(log.toList == List("first"), s"log=$log")
+      val r = tagged(Tagged(first())("t"), await({ log += "second"; Future.successful(0) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r == (1, "t", 0), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // a case class with initialization code: its constructor runs before the async argument
+  @Test def testCaseClassWithInitArg() = {
+    val log = ArrayBuffer[String]()
+    val c = async[Future] {
+      val r = logged(Logged(1, log), await({ log += "second"; Future.successful(0) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r == (1, 0), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // the types of the next parameters depend on a lazy val or an object argument
+  @Test def testDependentParamArgs() = {
+    lazy val la: Dep = DepObject
+    val c = async[Future] {
+      val r1 = depPair(la)(la.mk(3), await(Future.successful(4)))
+      assert(r1 == (3, 4), s"r1=$r1")
+      val r2 = depPair(DepObject)(DepObject.mk(5), await(Future.successful(6)))
+      assert(r2 == (5, 6), s"r2=$r2")
+    }
+    FutureCompleter(c)
+  }
+
+  // the call with a sync argument and a shifted lambda (no async argument): the argument is evaluated once, after the qualifier
+  @Test def testMethodCallArgWithShiftedLambda() = {
+    val log = ArrayBuffer[String]()
+    def qualifier(): List[Int] = { log += "qualifier"; List(2, 3) }
+    def first(): Int = { log += "first"; 1 }
+    val c = async[Future] {
+      val r = qualifier().foldLeft(first())((s, e) => s + await(Future.successful(e)))
+      assert(log.toList == List("qualifier", "first"), s"log=$log")
       assert(r == 6, s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // a variable, changed by the qualifier, in a call with a shifted lambda: the new value is passed
+  @Test def testVarArgChangedByQualifierWithShiftedLambda() = {
+    val c = async[Future] {
+      var counter = 0
+      def qualifier(): List[Int] = { counter = 10; List(1, 2) }
+      val r = qualifier().foldLeft(counter)((s, e) => s + await(Future.successful(e)))
+      assert(r == 13, s"r=$r")
     }
     FutureCompleter(c)
   }
@@ -181,6 +233,36 @@ object TestApplyArgEvaluationOrder {
   def pair(a: Int, b: Int): (Int, Int) = (a, b)
 
   def curried(a: Int)(b: Int): (Int, Int) = (a, b)
+
+  def curriedVarargs(xs: Int*)(b: Int): (Seq[Int], Int) = (xs, b)
+
+  case class Point(x: Int, y: Int)
+
+  def point(p: Point, b: Int): (Int, Int, Int) = (p.x, p.y, b)
+
+  case class Tagged(n: Int)(val tag: String)
+
+  def tagged(t: Tagged, b: Int): (Int, String, Int) = (t.n, t.tag, b)
+
+  case class Logged(n: Int, log: ArrayBuffer[String]) {
+    log += "first"
+  }
+
+  def logged(l: Logged, b: Int): (Int, Int) = (l.n, b)
+
+  trait Dep {
+    type T
+    def mk(n: Int): T
+    def get(t: T): Int
+  }
+
+  object DepObject extends Dep {
+    type T = Int
+    def mk(n: Int): Int = n
+    def get(t: Int): Int = t
+  }
+
+  def depPair(x: Dep)(y: x.T, z: Int): (Int, Int) = (x.get(y), z)
 
   class Holder {
     var n: Int = 1
