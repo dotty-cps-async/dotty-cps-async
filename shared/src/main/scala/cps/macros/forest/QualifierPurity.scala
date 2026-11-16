@@ -7,12 +7,12 @@ import scala.quoted._
   * bound to a val before it, to keep the Scala evaluation order.
   */
 private[forest] enum QualifierPurity:
-  // `this`, `super`, a literal, a selection of a non-lazy val from such a path: evaluated after the async part, it gives the same value
-  // without other effects. Also a package, the statics of a Java class and a Scala.js global scope object, which are not values, and
-  // a new instance of a case class without initialization code, with such arguments.
+  // `this`, `super`, a literal, a selection of a non-lazy val or of an object without initialization code from such a path: evaluated
+  // after the async part, it gives the same value without other effects. Also a package, the statics of a Java class and a Scala.js
+  // global scope object, which are not values, and a new instance of a case class without initialization code, with such arguments.
   case PurePath
-  // a stable path through a lazy val or an object: its evaluation can run an initializer. Unlike dotty's `refPurity` (used by the
-  // plugin), every Scala object counts here: whether it has initializers is not checked.
+  // a stable path through a lazy val or an object with initialization code: its evaluation can run an initializer (as dotty's
+  // `refPurity`, used by the plugin).
   case IdempotentPath
   // a method call, a var, a by-name parameter, or any other tree that is not a path. A qualifier changed by the transformation is
   // classified by its new tree.
@@ -46,14 +46,20 @@ private[forest] object QualifierPurity:
     def isNoValue: Boolean =
       term.symbol.flags.is(Flags.Package) || term.symbol.flags.is(Flags.Module) && (term.symbol.flags.is(Flags.JavaDefined) ||
         term.symbol.moduleClass.annotations.exists(_.tpe.typeSymbol.fullName == "scala.scalajs.js.annotation.JSGlobalScope"))
+    // a class without initialization code (statements, fields with initializers), also in its base classes, as dotty's
+    // `isNoInitsRealClass`. The namer sets `NoInits` from the body of a class when the class is completed, also for a class of the
+    // current run (reading its flags completes it).
+    def hasNoInits(cls: Symbol): Boolean = cls.typeRef.baseClasses.forall(_.flags.is(Flags.NoInits))
     def refPurity: QualifierPurity =
       val flags = term.symbol.flags
       if (flags.is(Flags.Mutable) || flags.is(Flags.Method) || !isByName.contains(false)) then QualifierPurity.Impure
-      else if (flags.is(Flags.Lazy) || flags.is(Flags.Module)) then QualifierPurity.IdempotentPath
+      // an object without initialization code (`StringContext`, a synthetic companion): its evaluation has no effects. (Before
+      // `Lazy`: the val of an object is lazy too.)
+      else if (flags.is(Flags.Module)) then
+        if (hasNoInits(term.symbol.moduleClass)) then QualifierPurity.PurePath else QualifierPurity.IdempotentPath
+      else if (flags.is(Flags.Lazy)) then QualifierPurity.IdempotentPath
       else QualifierPurity.PurePath
-    // a synthetic `apply` of a case class companion, where the class has no initialization code (statements, fields with
-    // initializers), also in its base classes (as dotty's `isNoInitsRealClass`): the constructor has no other effects. A class of
-    // the current run, which is not typed yet, has no `NoInits` flag: it is bound.
+    // a synthetic `apply` of a case class companion, where the class has no initialization code: the constructor has no other effects
     def isPureCaseClassApply(fun: Term): Boolean = fun match
       case TypeApply(f, _) => isPureCaseClassApply(f)
       case Apply(_, _)     => false
@@ -61,18 +67,24 @@ private[forest] object QualifierPurity:
         val sym = fun.symbol
         sym.name == "apply" && sym.flags.is(Flags.Synthetic) && sym.owner.flags.is(Flags.Module) && {
           val cls = sym.owner.companionClass
-          cls.flags.is(Flags.Case) && cls.typeRef.baseClasses.forall(_.flags.is(Flags.NoInits))
+          cls.flags.is(Flags.Case) && hasNoInits(cls)
         }
+    // the qualifier of a case class `apply`: the companion object (it can have initialization code) or a path to it (`outer.C(...)`)
+    def applyQualifierPurity(fun: Term): QualifierPurity = fun match
+      case TypeApply(f, _) => applyQualifierPurity(f)
+      case Select(qual, _) => of(qual)
+      case _               => importedQualifier(fun).map(of).getOrElse(QualifierPurity.PurePath)
     def argPurity(arg: Term): QualifierPurity = arg match
       case Typed(Repeated(elems, _), _) => elems.map(argPurity).foldLeft(QualifierPurity.PurePath)(_.min(_))
       case _                            => of(arg)
-    // the purity of the arguments of a pure case class apply, in all its argument lists (`C(a)(b)`); None for other calls
+    // the purity of a pure case class apply, with its qualifier and the arguments in all its argument lists (`C(a)(b)`), as dotty's
+    // `exprPurity`; None for other calls
     def caseClassApplyPurity(apply: Term): Option[QualifierPurity] = apply match
       case Apply(fun, args) =>
         val argsPurity = args.map(argPurity).foldLeft(QualifierPurity.PurePath)(_.min(_))
         fun match
           case Apply(_, _) => caseClassApplyPurity(fun).map(_.min(argsPurity))
-          case _           => if (isPureCaseClassApply(fun)) then Some(argsPurity) else None
+          case _           => if (isPureCaseClassApply(fun)) then Some(argsPurity.min(applyQualifierPurity(fun))) else None
       case _ => None
     term match
       case This(_) | Super(_, _) | Literal(_) => QualifierPurity.PurePath

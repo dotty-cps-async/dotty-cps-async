@@ -51,9 +51,9 @@ class TestTestsCli {
   val argBinding = "t2026_11_16_arg_binding"
 
   @Test def argBindingMacro(): Unit =
-    TestsCli.check(argBinding, usePlugin = false, expectedOutput = Some("List(34, 56, 17, 18, 19, 6)\n"))
+    TestsCli.check(argBinding, usePlugin = false, expectedOutput = Some("List(34, 56, 17, 18, 19, 6, x002)\n"))
 
   @Test def argBindingPlugin(): Unit =
-    TestsCli.check(argBinding, usePlugin = true, expectedOutput = Some("List(34, 56, 17, 18, 19, 6)\n"))
+    TestsCli.check(argBinding, usePlugin = true, expectedOutput = Some("List(34, 56, 17, 18, 19, 6, x002)\n"))
 
 }

@@ -155,13 +155,13 @@ object ApplyArg {
               //  ???
               // }
               cpsExpr.asyncKind match
-                case AsyncKind.Sync =>
-                  // bound only in a call with an async argument (see `withSyncBinding`)
-                  PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
-                case AsyncKind.AsyncLambda(_) =>
+                // a sync argument is bound only in a call with an async argument (see `withSyncBinding`)
+                case AsyncKind.Sync | AsyncKind.AsyncLambda(_) =>
                   PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
                 case _ =>
-                  val sym = newSymbol(owner, paramName, Flags.EmptyFlags, paramType.widen, NoSymbol)
+                  // the val has the type of the argument, not of the parameter: a macro of the called method can check it
+                  // (`f"${await(x)}%03d"`: the parameter is `Any*`), a dependent parameter type refers to the method's parameters
+                  val sym = newSymbol(owner, paramName, Flags.EmptyFlags, cpsExpr.originType.widen, NoSymbol)
                   val optRhs = cpsExpr.unpure
                   val valDef = ValDef(sym.asTerm, optRhs.getOrElse(EmptyTree).changeOwner(cpsExpr.owner, sym))
                   PlainApplyArg(paramName, paramType.widen, cpsExpr, Some(valDef), isDirectContext, named)

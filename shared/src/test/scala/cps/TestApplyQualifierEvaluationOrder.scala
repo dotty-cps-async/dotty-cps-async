@@ -346,6 +346,27 @@ class TestApplyQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // a case class instance as the qualifier, which companion object has initialization code: it is initialized before the argument
+  @Test def testCaseClassCompanionWithInitQualifier() = {
+    val c = async[Future] {
+      val r = InitCompanionCell(1).plus(await({ companionCellLog += "second"; Future.successful(2) }))
+      assert(companionCellLog.toList == List("init", "second"), s"log=$companionCellLog")
+      assert(r == 3, s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // the `StringContext` of an interpolator is not bound: the `f` interpolator needs it as a literal (and the type of the argument)
+  @Test def testStringInterpolators() = {
+    val c = async[Future] {
+      val f1 = f"x${await(Future.successful(2))}%03d"
+      assert(f1 == "x002", s"f1=$f1")
+      val s1 = s"a${await(Future.successful(1))}b${await(Future.successful("c"))}"
+      assert(s1 == "a1bc", s"s1=$s1")
+    }
+    FutureCompleter(c)
+  }
+
 }
 
 object TestApplyQualifierEvaluationOrder {
@@ -357,6 +378,17 @@ object TestApplyQualifierEvaluationOrder {
   case class LoggedCell(x: Int, log: ArrayBuffer[String]) {
     log += "first"
     def plus(z: Int): Int = x + z
+  }
+
+  // only `testCaseClassCompanionWithInitQualifier` touches InitCompanionCell
+  val companionCellLog = ArrayBuffer[String]()
+
+  case class InitCompanionCell(x: Int) {
+    def plus(z: Int): Int = x + z
+  }
+
+  object InitCompanionCell {
+    companionCellLog += "init"
   }
 
   class Holder {

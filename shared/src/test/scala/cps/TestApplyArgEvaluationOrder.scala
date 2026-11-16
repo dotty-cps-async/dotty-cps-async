@@ -149,7 +149,8 @@ class TestApplyArgEvaluationOrder {
     FutureCompleter(c)
   }
 
-  // vals, a literal, `this`, a spliced val and a case class without initialization code stay in the call
+  // vals, a literal, `this`, a spliced val and a case class without initialization code (they stay in the call): only the results
+  // are checked
   @Test def testPurePathArgs() = {
     val c = async[Future] {
       val h = new Holder
@@ -190,6 +191,26 @@ class TestApplyArgEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // a case class, which companion object has initialization code: the object is initialized before the async argument
+  @Test def testCaseClassCompanionWithInitArg() = {
+    val c = async[Future] {
+      val r = initCompanion(InitCompanion(1), await({ companionLog += "second"; Future.successful(0) }))
+      assert(companionLog.toList == List("init", "second"), s"log=$companionLog")
+      assert(r == (1, 0), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // a case class of an outer instance, which is a variable changed by the async argument: the old instance is used
+  @Test def testCaseClassWithImpureOuterArg() = {
+    val c = async[Future] {
+      var outer = new Outer(1)
+      val r = innerArg(outer.Inner(5), await({ outer = new Outer(2); Future.successful(3) }))
+      assert(r == (1, 5, 3), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
   // the types of the next parameters depend on a lazy val or an object argument
   @Test def testDependentParamArgs() = {
     lazy val la: Dep = DepObject
@@ -198,6 +219,9 @@ class TestApplyArgEvaluationOrder {
       assert(r1 == (3, 4), s"r1=$r1")
       val r2 = depPair(DepObject)(DepObject.mk(5), await(Future.successful(6)))
       assert(r2 == (5, 6), s"r2=$r2")
+      // an object with initialization code is bound
+      val r3 = depPair(DepInitObject)(DepInitObject.mk(7), await(Future.successful(8)))
+      assert(r3 == (7, 8), s"r3=$r3")
     }
     FutureCompleter(c)
   }
@@ -262,7 +286,33 @@ object TestApplyArgEvaluationOrder {
     def get(t: Int): Int = t
   }
 
+  object DepInitObject extends Dep {
+    val created: Boolean = true
+    type T = Int
+    def mk(n: Int): Int = n
+    def get(t: Int): Int = t
+  }
+
   def depPair(x: Dep)(y: x.T, z: Int): (Int, Int) = (x.get(y), z)
+
+  // only `testCaseClassCompanionWithInitArg` touches InitCompanion
+  val companionLog = ArrayBuffer[String]()
+
+  case class InitCompanion(n: Int)
+
+  object InitCompanion {
+    companionLog += "init"
+  }
+
+  def initCompanion(i: InitCompanion, b: Int): (Int, Int) = (i.n, b)
+
+  class Outer(val k: Int) {
+    case class Inner(n: Int) {
+      def outerK: Int = k
+    }
+  }
+
+  def innerArg(i: Outer#Inner, b: Int): (Int, Int, Int) = (i.outerK, i.n, b)
 
   class Holder {
     var n: Int = 1

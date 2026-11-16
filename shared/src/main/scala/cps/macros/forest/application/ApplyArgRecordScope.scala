@@ -212,15 +212,16 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
   }
 
+  /** @param noOrderDepended the classification of `term` (computed by the builder) */
   case class ApplyArgNoPrecalcTermRecord(
       term: Term,
       index: Int,
       isChanged: Boolean,
-      override val isCpsDirect: Boolean
+      override val isCpsDirect: Boolean,
+      noOrderDepended: Boolean
   ) extends ApplyArgRecord {
     def isAsync = false
     def hasShiftedLambda: Boolean = false
-    lazy val noOrderDepended = termIsNoOrderDepended(term)
     override def shouldBeChangedSync: Boolean = isChanged
     override def identArg(existsAsync: Boolean): Term = term
     override def deferredArg(existsAsync: Boolean): Term = term
@@ -239,7 +240,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
   ) extends ApplyArgRecord {
     def isAsync = termCpsTree.isAsync
     def hasShiftedLambda: Boolean = false
-    lazy val noOrderDepended = termIsNoOrderDepended(term)
+    // an argument is precalculated when it is async or not a pure path (see `buildCpsTreeApplyArgRecord`)
+    def noOrderDepended = false
     def shouldBeChangedSync: Boolean = termCpsTree.isChanged
 
     def identArg(existsAsync: Boolean): Term =
