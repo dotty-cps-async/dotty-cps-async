@@ -110,7 +110,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
                     println(s"candidate = $candidate")
                     throw ex;
                 }
-              else if (!(TransformUtil.widenTreeType(TypeRepr.of[T]) <:< TypeRepr.of[T])) then
+              else if (!(TransformUtil.veryWiden(TypeRepr.of[T], widenLiterals = false) <:< TypeRepr.of[T])) then
                 // T has singleton types of terms, which the transformed tree does not keep
                 throw MacroError(TransformUtil.singletonTermTypesMessage(TypeRepr.of[T]), cpsCtx.patternCode)
               else
@@ -173,7 +173,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def otpe: TypeRepr =
       origin match
-        case Typed(_, tpt) => TransformUtil.widenTreeType(tpt.tpe) // a cast (castOtpe) to a literal type is kept (#166)
+        case Typed(_, tpt) => TransformUtil.veryWiden(tpt.tpe, widenLiterals = false) // a cast (castOtpe) to a literal type is kept (#166)
         case t: Term       => t.tpe.widen
         case other         => TypeRepr.of[Unit]
 
@@ -353,7 +353,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
 
     def transformed: Term = {
       val untmapTerm = cpsCtx.monad.asTerm.select(mapSymbol)
-      val wPrevOtpe = TransformUtil.widenTreeType(prev.otpe)
+      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, widenLiterals = false)
       val tmapTerm = untmapTerm.appliedToTypes(List(wPrevOtpe, otpe))
       val r = tmapTerm.appliedToArgss(
         List(
@@ -413,9 +413,9 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       val monad = cpsCtx.monad.asTerm
       val untpFlatMapTerm = monad.select(flatMapSymbol)
       // val wPrevOtpe = prev.otpe.widen
-      val wPrevOtpe = TransformUtil.widenTreeType(prev.otpe)
+      val wPrevOtpe = TransformUtil.veryWiden(prev.otpe, widenLiterals = false)
       // val wOtpe = otpe.widen
-      val wOtpe = TransformUtil.widenTreeType(otpe)
+      val wOtpe = TransformUtil.veryWiden(otpe, widenLiterals = false)
       val tpFlatMapTerm = untpFlatMapTerm.appliedToTypes(List(wPrevOtpe, wOtpe))
       val r = tpFlatMapTerm.appliedToArgss(
         List(

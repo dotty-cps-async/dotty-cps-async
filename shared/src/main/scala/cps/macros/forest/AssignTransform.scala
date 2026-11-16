@@ -19,7 +19,8 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
     //  otherwise (#179); literal types are kept by veryWiden.
     val declaredType = ValDef(left.symbol, None).tpt.tpe
     val rightType =
-      if (TransformUtil.widenTreeType(declaredType) <:< declaredType) then TransformUtil.veryWiden(right.tpe, Some(declaredType))
+      if (TransformUtil.veryWiden(declaredType, widenLiterals = false) <:< declaredType) then
+        TransformUtil.veryWiden(right.tpe, Some(declaredType))
       else right.tpe
     rightType.asType match
       case '[r] =>
