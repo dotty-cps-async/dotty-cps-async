@@ -12,8 +12,11 @@ import cps.plugin.*
 import cps.plugin.forest.application.*
 
 /** A sync qualifier of an assignment `q.f = ...` or a method call `q.m(...)` with an async right part or argument is bound to a val
-  * before the async part, to keep the Scala evaluation order, unless it is a pure path (dotty's `isPurePath`) or not a value. See
+  * before the async part, to keep the Scala evaluation order, unless it is pure (see `isPure`) or not a value. See
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/165 and https://github.com/dotty-cps-async/dotty-cps-async/issues/169
+  *
+  * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.withSyncBinding` and
+  * https://github.com/dotty-cps-async/dotty-cps-async/issues/170).
   */
 object QualifierBinding {
 
@@ -31,27 +34,81 @@ object QualifierBinding {
     }
 
   def needsBinding(qual: Tree)(using Context): Boolean =
-    !isPurePath(path(qual)) && !isNoValue(qual)
+    !isPure(qual) && !isNoValue(qual)
 
-  /** The path, which a qualifier denotes: a member imported from a path (`import O.*; h`) is selected from it. */
-  private def path(qual: Tree)(using Context): Tree =
-    qual match
-      case id: Ident => importedQualifier(id).map(_.select(id.symbol)).getOrElse(qual)
-      case _         => qual
+  /** Evaluated after the async part, also more than once (a monad can run the rest of the computation more than once, as `List`),
+    * it gives the same value without other effects: a pure path (dotty's `isPurePath`), a function value, or the `StringContext`
+    * of a string interpolation with pure parts, which must stay a literal for `f`. Differences from dotty's `exprPurity` (3.9):
+    *   - a package is a pure path (`refPurity` gives an idempotent path for it, so `_root_.scala.StringContext` would be bound);
+    *   - a member imported from a path (`import O.*; h`) is selected from it: the path is evaluated too;
+    *   - a new instance, also of a case class without initialization code, is not pure: each evaluation gives a new one;
+    *   - `StringContext(...)` can have varargs (`exprPurity` has no case for a `SeqLiteral`).
+    * As in dotty, a selection from a val is pure also when the val can be null: it stays, but the reference is checked in its
+    * place (see `nullChecks`).
+    */
+  private def isPure(tree: Tree)(using Context): Boolean =
+    tree match
+      case _: Literal | _: This | _: Super    => true
+      case _ if tree.symbol.is(Flags.Package) => true
+      case id: Ident                          => isPureRef(tree) && importedQualifier(id).forall(isPure)
+      case Select(qual, _)                    => isPureRef(tree) && isPure(qual)
+      case Typed(expr, _)                     => isPure(expr)
+      case Apply(fn, args)                    => fn.symbol == defn.StringContextModule_apply && isPure(fn) && args.forall(isPureArg)
+      case closureDef(_)                      => true
+      case _                                  => false
 
-  /** `val name = qual`. A singleton type of a stable path (a lazy val or an object, or the result type of `def f(): b.type`) is
-    * kept: member types can depend on it. Otherwise only singleton term references are widened (as `widenTermRefByName` in the
-    * macro): `this.type` stays.
+  /** `if (q == null) throw new NullPointerException()` for each reference `q`, from which a pure `tree` (which stays after a later
+    * async part) selects and which can be null, in the evaluation order: `t` of `t.x`, `a` and `a.b` of `a.b.c`. The selection
+    * throws, as in Scala, before the async part. `this`, `super`, an object, a package and a value of a value class are never null.
+    */
+  def nullChecks(tree: Tree)(using Context): List[Tree] = {
+    def isNonNull(qual: Tree): Boolean =
+      qual match
+        case _: This | _: Super | _: Literal => true
+        case Typed(expr, _)                  => isNonNull(expr)
+        case _ => qual.symbol.isOneOf(Flags.Module | Flags.Package) || qual.tpe.widen.derivesFrom(defn.AnyValClass)
+    def selection(qual: Tree): List[Tree] =
+      references(qual) ++ (if (isNonNull(qual)) then Nil else List(qual))
+    def references(tree: Tree): List[Tree] =
+      tree match
+        case Typed(SeqLiteral(elems, _), _) => elems.flatMap(references)
+        case SeqLiteral(elems, _)           => elems.flatMap(references)
+        case Typed(expr, _)                 => references(expr)
+        case NamedArg(_, expr)              => references(expr)
+        case Apply(fn, args)                => references(fn) ++ args.flatMap(references)
+        case Select(qual, _)                => selection(qual)
+        case id: Ident                      => importedQualifier(id).map(selection).getOrElse(Nil)
+        case _                              => Nil
+    references(tree).map { qual =>
+      val npe = New(defn.NullPointerExceptionClass.typeRef, Nil)
+      If(qual.select(defn.Any_==).appliedTo(nullLiteral), Throw(npe), unitLiteral).withSpan(qual.span)
+    }
+  }
+
+  private def isPureArg(arg: Tree)(using Context): Boolean =
+    arg match
+      case Typed(SeqLiteral(elems, _), _) => elems.forall(isPure)
+      case SeqLiteral(elems, _)           => elems.forall(isPure)
+      case NamedArg(_, expr)              => isPureArg(expr)
+      case _                              => isPure(arg)
+
+  /** `val name = qual`. A singleton type of a stable path, which is the value of `qual`, is kept: member types and the types of the
+    * next parameters can depend on it. `qual` is such a path (a lazy val or an object), or has its type (`f()`, where `def f():
+    * b.type`), or refers to a parameterless method, a by-name parameter or a var with such a declared type (`def get: b.type`).
+    * Otherwise only singleton term references are widened (as `widenTermRefByName` in the macro): `this.type` stays.
     */
   def valDef(qual: Tree, name: String, span: Span, owner: Symbol)(using Context): ValDef = {
-    val qualType = qual.tpe match
-      case tr: Types.TermRef if isPathType(tr) && isIdempotentPath(ref(tr)) => tr
-      case _                                                                => qual.tpe.widenTermRefExpr
+    def stablePathType(tpe: Types.Type): Option[Types.Type] =
+      tpe match
+        case tr: Types.TermRef if isPathType(tr) =>
+          if (isIdempotentPath(ref(tr))) then Some(tr) else stablePathType(tr.info.widenExpr)
+        case _ => None
+    val qualType = stablePathType(qual.tpe).getOrElse(qual.tpe.widenTermRefExpr)
     val qualSym = newSymbol(owner, name.toTermName, Flags.EmptyFlags, qualType, NoSymbol)
     ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym)).withSpan(span)
   }
 
-  /** `{ val q = qual; next }`, where `next` uses `q`.
+  /** `{ val q = qual; next }`, where `next` uses `q`, or `{ check; next }` for a statement (a null check).
     *
     * The block is built as one tree: changing the owner of a block tree (when the whole expression is moved, e.g. it is the right
     * part of an async `val`) also changes the owner of its local definitions. A `MemberDefCpsTree` in a `SeqCpsTree` would keep the
@@ -59,17 +116,20 @@ object QualifierBinding {
     * `CpsTree` (it is applied or shifted later), so this case still uses a `SeqCpsTree`; a call with a bound qualifier is not known
     * to give an async lambda.
     */
-  def withBinding(origin: Tree, owner: Symbol, qualValDef: ValDef, next: CpsTree)(using Context, CpsTopLevelContext): CpsTree =
+  def withBinding(origin: Tree, owner: Symbol, stat: Tree, next: CpsTree)(using Context, CpsTopLevelContext): CpsTree =
     next.asyncKind match
       case AsyncKind.Sync =>
         val nextTree = next.unpure.get.changeOwner(next.owner, owner)
-        CpsTree.pure(origin, owner, Block(List(qualValDef), nextTree).withSpan(origin.span))
+        CpsTree.pure(origin, owner, Block(List(stat), nextTree).withSpan(origin.span))
       case AsyncKind.Async(internalKind) =>
         val nextTree = next.transformed.changeOwner(next.owner, owner)
-        CpsTree.impure(origin, owner, Block(List(qualValDef), nextTree).withSpan(origin.span), internalKind)
+        CpsTree.impure(origin, owner, Block(List(stat), nextTree).withSpan(origin.span), internalKind)
       case AsyncKind.AsyncLambda(_) =>
         // the lambda is kept as a CpsTree, to be applied or shifted
-        BlockBoundsCpsTree(SeqCpsTree(origin, owner, IndexedSeq(MemberDefCpsTree(origin, owner, qualValDef)), next))
+        val first = stat match
+          case valDef: ValDef => MemberDefCpsTree(origin, owner, valDef)
+          case _              => CpsTree.pure(origin, owner, stat)
+        BlockBoundsCpsTree(SeqCpsTree(origin, owner, IndexedSeq(first), next))
 
   /** The term path of a member imported from it (`import O.*; n = ...` or `import O.*; m(...)`), which is the qualifier of the
     * reference.

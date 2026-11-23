@@ -32,7 +32,18 @@ sealed trait ApplyArg {
   def isDirectContext: Boolean
   def named: Option[TermName]
 
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)]
+  /** The parts, which are evaluated before the call, in order: an async argument (the val is the parameter of `flatMap`), a sync
+    * argument bound by [[withSyncBinding]] (the val has its right part), or a null check of a sync argument (no val, see
+    * `QualifierBinding.nullChecks`).
+    */
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])]
+
+  /** This argument with a val for a sync argument, which is not a pure path: in a call with an async argument (evaluated before the
+    * call), a later async argument can change its value (https://github.com/dotty-cps-async/dotty-cps-async/issues/170). A pure path,
+    * which stays in the call, gets the null checks of the references it selects from, in its place. Not for the direct context: it
+    * is always synthetic and substituted by the real context in the code, a val would break this substitution.
+    */
+  def withSyncBinding(using Context, CpsTopLevelContext): ApplyArg = this
 
   def enclosingInlined: Seq[Inlined] = Seq.empty
 
@@ -108,7 +119,6 @@ object ApplyArg {
       isByName: Boolean,
       isDirectContext: Boolean,
       owner: Symbol,
-      dependFromLeft: Boolean,
       named: Option[TermName],
       nesting: Int
   )(using Context, CpsTopLevelContext): ApplyArg = {
@@ -124,7 +134,7 @@ object ApplyArg {
           paramType,
           elems.zipWithIndex.map { (p, i) =>
             val newName = (paramName.toString + i.toString).toTermName
-            ApplyArg(p, newName, elemtpt.tpe, isByName, isDirectContext, owner, dependFromLeft, None, nesting)
+            ApplyArg(p, newName, elemtpt.tpe, isByName, isDirectContext, owner, None, nesting)
           },
           elemtpt,
           expr,
@@ -146,12 +156,13 @@ object ApplyArg {
               //  ???
               // }
               cpsExpr.asyncKind match
-                case AsyncKind.Sync if !dependFromLeft =>
-                  PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
-                case AsyncKind.AsyncLambda(_) =>
+                // a sync argument is bound only in a call with an async argument (see `withSyncBinding`)
+                case AsyncKind.Sync | AsyncKind.AsyncLambda(_) =>
                   PlainApplyArg(paramName, paramType, cpsExpr, None, isDirectContext, named)
                 case _ =>
-                  val sym = newSymbol(owner, paramName, Flags.EmptyFlags, paramType.widen, NoSymbol)
+                  // the val has the type of the argument, not of the parameter: a macro of the called method can check it
+                  // (`f"${await(x)}%03d"`: the parameter is `Any*`), a dependent parameter type refers to the method's parameters
+                  val sym = newSymbol(owner, paramName, Flags.EmptyFlags, cpsExpr.originType.widen, NoSymbol)
                   val optRhs = cpsExpr.unpure
                   val valDef = ValDef(sym.asTerm, optRhs.getOrElse(EmptyTree).changeOwner(cpsExpr.owner, sym))
                   PlainApplyArg(paramName, paramType.widen, cpsExpr, Some(valDef), isDirectContext, named)
@@ -225,19 +236,28 @@ case class PlainApplyArg(
     override val expr: CpsTree,
     val optIdentValDef: Option[ValDef],
     val isDirectContext: Boolean,
-    val named: Option[TermName]
+    val named: Option[TermName],
+    val nullChecks: List[Tree] = Nil
 ) extends ExprApplyArg {
 
-  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] = {
-    optIdentValDef.map(valDef => (expr, valDef)).toSeq
+  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] = {
+    optIdentValDef.map(valDef => (expr, Some(valDef))).toSeq ++
+      nullChecks.map(check => (CpsTree.pure(expr.origin, expr.owner, check), None))
   }
+
+  override def withSyncBinding(using Context, CpsTopLevelContext): ApplyArg =
+    expr.asyncKind match
+      case AsyncKind.Sync if optIdentValDef.isEmpty && !isDirectContext =>
+        val tree = expr.unpure.get
+        if (QualifierBinding.needsBinding(tree)) then
+          copy(optIdentValDef = Some(QualifierBinding.valDef(tree, name.toString, expr.origin.span, expr.owner)))
+        else copy(nullChecks = QualifierBinding.nullChecks(tree))
+      case _ => this
 
   /** Output the expression inside call this can
     *
     * //Are we change symbol when do changeOwner to tree ? If yes, we should be extremally careful with different refs to
     * optIdentSym. Maybe better do expr function from sym ?
-    *
-    * TODO: dependFromLeft
     */
   override def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using
       Context,
@@ -246,9 +266,14 @@ case class PlainApplyArg(
     import AsyncKind.*
     expr.asyncKind match
       case Sync =>
-        expr.unpure match
-          case Some(tree) => tree
-          case None       => throw CpsTransformException("Impossibke: syn expression without unpure", expr.origin.srcPos)
+        optIdentValDef match
+          // the val of a sync argument, bound in a call with an async argument, is evaluated before the call (`genApplication`):
+          // the call uses it, the argument is evaluated once (https://github.com/dotty-cps-async/dotty-cps-async/issues/171)
+          case Some(valDef) => ref(valDef.symbol).withSpan(expr.origin.span)
+          case None =>
+            expr.unpure match
+              case Some(tree) => tree
+              case None       => throw CpsTransformException("Impossibke: syn expression without unpure", expr.origin.srcPos)
       case Async(_) => ref(optIdentValDef.get.symbol).withSpan(expr.origin.span)
       case AsyncLambda(internal) =>
         if (callMode == ApplyArgCallMode.ASYNC_SHIFT) then expr.transformed
@@ -394,10 +419,13 @@ case class RepeatApplyArg(
 
   override def lambdaCanBeUnshifted(using Context, CpsTopLevelContext) = elements.exists(_.lambdaCanBeUnshifted)
 
-  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
-    elements.foldLeft(IndexedSeq.empty[(CpsTree, ValDef)]) { (s, e) =>
+  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
+    elements.foldLeft(IndexedSeq.empty[(CpsTree, Option[ValDef])]) { (s, e) =>
       s ++ e.flatMapsBeforeCall
     }
+
+  override def withSyncBinding(using Context, CpsTopLevelContext): ApplyArg =
+    copy(elements = elements.map(_.withSyncBinding))
 
   override def exprInCall(callMode: ApplyArgCallMode, optRuntimeAwait: Option[tpd.Tree])(using Context, CpsTopLevelContext) =
     named match
@@ -513,7 +541,7 @@ case class InlineApplyArg(
   override def isLambda(using Context, CpsTopLevelContext): Boolean =
     throwNotHere
 
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
     throwNotHere
 
   def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using Context, CpsTopLevelContext): Tree =
@@ -551,7 +579,7 @@ case class ErasedApplyArg(
   override def lambdaCanBeUnshifted(using Context, CpsTopLevelContext): Boolean =
     false
 
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
     Seq.empty
 
   def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using Context, CpsTopLevelContext): Tree =
