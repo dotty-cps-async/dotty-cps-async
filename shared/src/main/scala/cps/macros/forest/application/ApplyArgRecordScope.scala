@@ -177,8 +177,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       else
         elements.foldRight(tree) { (e, s) =>
           e match
-            case _: ApplyArgNoPrecalcTermRecord =>
-              s
+            case e1: ApplyArgNoPrecalcTermRecord =>
+              e1.append(s)
             case e1: ApplyArgPrecalcTermRecord =>
               e.append(s)
             case _: ApplyArgLambdaRecord => s
@@ -212,14 +212,21 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
 
   }
 
-  /** @param noOrderDepended the classification of `term` (computed by the builder) */
+  /** @param noOrderDepended the classification of `term` (computed by the builder)
+    * @param nullChecks
+    *   the checks of the references, from which `term` selects and which can be null (see `QualifierPurity.nullChecks`): when an
+    *   argument is async, they are evaluated in the place of `term`, which stays in the call
+    */
   case class ApplyArgNoPrecalcTermRecord(
       term: Term,
       index: Int,
       isChanged: Boolean,
       override val isCpsDirect: Boolean,
-      noOrderDepended: Boolean
+      noOrderDepended: Boolean,
+      nullChecks: List[Term] = Nil
   ) extends ApplyArgRecord {
+    override def usePrepend(existsAsync: Boolean): Boolean =
+      super.usePrepend(existsAsync) || (existsAsync && nullChecks.nonEmpty)
     def isAsync = false
     def hasShiftedLambda: Boolean = false
     override def shouldBeChangedSync: Boolean = isChanged
@@ -227,7 +234,8 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     override def deferredArg(existsAsync: Boolean): Term = term
     override def shift(): ApplyArgRecord = this
     override def withRuntimeAwait(runtimeAwait: qctx.reflect.Term): ApplyArgRecord = this
-    override def append(tree: CpsTree): CpsTree = tree
+    override def append(tree: CpsTree): CpsTree =
+      if (nullChecks.isEmpty) then tree else BlockCpsTree(tree.owner, Queue.from(nullChecks), tree)
   }
 
   case class ApplyArgPrecalcTermRecord(
@@ -506,6 +514,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def noOrderDepended = nested.noOrderDepended
     def shouldBeChangedSync = nested.shouldBeChangedSync
     def isCpsDirect: Boolean = nested.isCpsDirect
+    override def usePrepend(existsAsync: Boolean): Boolean = nested.usePrepend(existsAsync)
     def identArg(existsAsync: Boolean): Term = NamedArg(name, nested.identArg(existsAsync))
     def deferredArg(existsAsync: Boolean): Term = NamedArg(name, nested.deferredArg(existsAsync))
     def shift(): ApplyArgRecord = copy(nested = nested.shift())
@@ -576,6 +585,7 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
     def noOrderDepended = nested.noOrderDepended
     def isCpsDirect: Boolean = nested.isCpsDirect
     def shouldBeChangedSync: Boolean = nested.shouldBeChangedSync
+    override def usePrepend(existsAsync: Boolean): Boolean = nested.usePrepend(existsAsync)
     def identArg(existsAsync: Boolean): Term = nested.identArg(existsAsync)
     def deferredArg(existsAsync: Boolean): Term = nested.deferredArg(existsAsync)
     def shift(): ApplyArgRecord = copy(nested = nested.shift())

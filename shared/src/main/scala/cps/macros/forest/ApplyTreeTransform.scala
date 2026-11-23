@@ -437,7 +437,15 @@ trait ApplyTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                   buildApplyPrependArgsFlatMaps(nCpsFun, nFun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
                 ValCpsTree(owner, qualValDef, qualCpsTree, call)
               case None =>
-                buildApplyPrependArgsFlatMaps(cpsFun, fun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
+                val call =
+                  buildApplyPrependArgsFlatMaps(cpsFun, fun, applyRecords, applyTerm, argsProperties, unpure, tails)(owner)
+                // a pure qualifier stays in the call: the references it selects from are checked before the arguments
+                qualifier match
+                  case Some(SyncQualifier(obj, _)) if argsProperties.hasAsync =>
+                    QualifierPurity.nullChecks(using qctx)(obj) match
+                      case Nil    => call
+                      case checks => BlockCpsTree(owner, scala.collection.immutable.Queue.from(checks), call)
+                  case _ => call
           else
             // note,that if cpsFun is async, it should be caclulated before arguments
             // (see https://github.com/rssh/dotty-cps-async/issues/67)

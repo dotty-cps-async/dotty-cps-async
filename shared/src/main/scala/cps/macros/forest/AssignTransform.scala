@@ -52,7 +52,11 @@ class AssignTransform[F[_]: Type, T: Type, C <: CpsMonadContext[F]: Type](cpsCtx
                       .prependExprs(Seq(StatementExprTreeGen(qualValDef, true)))
                   else
                     val syncLeft = if (cpsObj.isChanged) then syncObj.select(left.symbol) else left
-                    runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
+                    val assign = runSyncLeft(syncLeft, cpsObj.isChanged, right, cpsRight)
+                    // a pure qualifier stays: the references it selects from are checked before the right part
+                    val nullChecks = if (cpsRight.isAsync) then QualifierPurity.nullChecks(syncObj) else Nil
+                    if (nullChecks.isEmpty) then assign
+                    else assign.prependExprs(nullChecks.map(check => StatementExprTreeGen(check, true)))
           case None =>
             // an identifier (a local variable or a field of the enclosing class): nothing to transform
             runSyncLeft(left, false, right, cpsRight)

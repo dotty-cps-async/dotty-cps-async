@@ -32,15 +32,16 @@ sealed trait ApplyArg {
   def isDirectContext: Boolean
   def named: Option[TermName]
 
-  /** The vals, which are evaluated before the call, in order: an async argument (the val is the parameter of `flatMap`) or a sync
-    * argument bound by [[withSyncBinding]] (the val has its right part).
+  /** The parts, which are evaluated before the call, in order: an async argument (the val is the parameter of `flatMap`), a sync
+    * argument bound by [[withSyncBinding]] (the val has its right part), or a null check of a sync argument (no val, see
+    * `QualifierBinding.nullChecks`).
     */
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)]
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])]
 
   /** This argument with a val for a sync argument, which is not a pure path: in a call with an async argument (evaluated before the
-    * call), a later async argument can change its value (https://github.com/dotty-cps-async/dotty-cps-async/issues/170). Not for
-    * the direct context: it is always synthetic and substituted by the real context in the code, a val would break this
-    * substitution.
+    * call), a later async argument can change its value (https://github.com/dotty-cps-async/dotty-cps-async/issues/170). A pure path,
+    * which stays in the call, gets the null checks of the references it selects from, in its place. Not for the direct context: it
+    * is always synthetic and substituted by the real context in the code, a val would break this substitution.
     */
   def withSyncBinding(using Context, CpsTopLevelContext): ApplyArg = this
 
@@ -235,11 +236,13 @@ case class PlainApplyArg(
     override val expr: CpsTree,
     val optIdentValDef: Option[ValDef],
     val isDirectContext: Boolean,
-    val named: Option[TermName]
+    val named: Option[TermName],
+    val nullChecks: List[Tree] = Nil
 ) extends ExprApplyArg {
 
-  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] = {
-    optIdentValDef.map(valDef => (expr, valDef)).toSeq
+  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] = {
+    optIdentValDef.map(valDef => (expr, Some(valDef))).toSeq ++
+      nullChecks.map(check => (CpsTree.pure(expr.origin, expr.owner, check), None))
   }
 
   override def withSyncBinding(using Context, CpsTopLevelContext): ApplyArg =
@@ -248,7 +251,7 @@ case class PlainApplyArg(
         val tree = expr.unpure.get
         if (QualifierBinding.needsBinding(tree)) then
           copy(optIdentValDef = Some(QualifierBinding.valDef(tree, name.toString, expr.origin.span, expr.owner)))
-        else this
+        else copy(nullChecks = QualifierBinding.nullChecks(tree))
       case _ => this
 
   /** Output the expression inside call this can
@@ -416,8 +419,8 @@ case class RepeatApplyArg(
 
   override def lambdaCanBeUnshifted(using Context, CpsTopLevelContext) = elements.exists(_.lambdaCanBeUnshifted)
 
-  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
-    elements.foldLeft(IndexedSeq.empty[(CpsTree, ValDef)]) { (s, e) =>
+  override def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
+    elements.foldLeft(IndexedSeq.empty[(CpsTree, Option[ValDef])]) { (s, e) =>
       s ++ e.flatMapsBeforeCall
     }
 
@@ -538,7 +541,7 @@ case class InlineApplyArg(
   override def isLambda(using Context, CpsTopLevelContext): Boolean =
     throwNotHere
 
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
     throwNotHere
 
   def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using Context, CpsTopLevelContext): Tree =
@@ -576,7 +579,7 @@ case class ErasedApplyArg(
   override def lambdaCanBeUnshifted(using Context, CpsTopLevelContext): Boolean =
     false
 
-  def flatMapsBeforeCall(using Context): Seq[(CpsTree, ValDef)] =
+  def flatMapsBeforeCall(using Context): Seq[(CpsTree, Option[ValDef])] =
     Seq.empty
 
   def exprInCallNotNamed(callMode: ApplyArgCallMode, optRuntimeAwait: Option[Tree])(using Context, CpsTopLevelContext): Tree =

@@ -172,7 +172,8 @@ object ApplyTransform {
           BooleanShortcutsTransform(appTerm, owner, nesting, obj, sel.symbol)
         else parseMethodCall(appTerm, owner, nesting, obj, sel, None, argss)
       case ImportedMethod(qual, sel, optTypeApply)
-          if QualifierBinding.hasAsyncArgBeforeCall(argss) && QualifierBinding.needsBinding(qual) =>
+          if QualifierBinding.hasAsyncArgBeforeCall(argss) &&
+            (QualifierBinding.needsBinding(qual) || QualifierBinding.nullChecks(qual).nonEmpty) =>
         // a method imported from a term path (`import O.*; m(await(...))`): the path is the qualifier, evaluated before the arguments
         parseMethodCall(appTerm, owner, nesting, qual, sel, optTypeApply, argss)
       case _ =>
@@ -218,7 +219,10 @@ object ApplyTransform {
         // the qualifier can be changed (e.g. contains an unshifted lambda), but stay sync
         val qual = cpsObj.unpure.get
         // `new C` is not a value: a constructor call has no qualifier
-        if (!fromCallChain && !sel.symbol.isConstructor && QualifierBinding.hasAsyncArgBeforeCall(argss) && QualifierBinding.needsBinding(qual))
+        val evaluatedBeforeArgs = !fromCallChain && !sel.symbol.isConstructor && QualifierBinding.hasAsyncArgBeforeCall(argss)
+        // the whole call with all argument lists, as in genApplication
+        val fullOrigin = if (argss.isEmpty) appTerm else argss.last.origin
+        if (evaluatedBeforeArgs && QualifierBinding.needsBinding(qual))
         then
           // the qualifier is evaluated before the arguments: `{ val q = qual; arg.flatMap(x => q.m(x)) }`
           val qualValDef = QualifierBinding.valDef(qual, "xQualApply", obj.span, owner)
@@ -227,14 +231,15 @@ object ApplyTransform {
             case Some(ta) => TypeApply(qualSel, ta.args).withSpan(ta.span)
             case None     => qualSel
           val call = parseSyncFunApplication(appTerm, owner, nesting, syncFun, argss, callMode)
-          // the whole call with all argument lists, as in genApplication
-          val fullOrigin = if (argss.isEmpty) appTerm else argss.last.origin
           QualifierBinding.withBinding(fullOrigin, owner, qualValDef, call)
         else
           val syncFun = optTypeApply match
             case Some(ta) => cpsObj.select(sel).typeApply(ta)
             case None     => cpsObj.select(sel)
-          parseSyncFunApplication(appTerm, owner, nesting, syncFun.unpure.get, argss, callMode)
+          val call = parseSyncFunApplication(appTerm, owner, nesting, syncFun.unpure.get, argss, callMode)
+          // a pure qualifier stays in the call: the references it selects from are checked before the arguments
+          val nullChecks = if (evaluatedBeforeArgs) then QualifierBinding.nullChecks(qual) else Nil
+          nullChecks.foldRight(call)((check, next) => QualifierBinding.withBinding(fullOrigin, owner, check, next))
       case AsyncKind.Async(internalKind) =>
         val valDefSym = newSymbol(owner, "xApplySelect".toTermName, Flags.EmptyFlags, cpsObj.originType.widen, Symbols.NoSymbol)
         val valDef = ValDef(valDefSym, EmptyTree).withSpan(appTerm.span)
@@ -975,9 +980,10 @@ object ApplyTransform {
             prefixCpsTree.asyncKind match
               case AsyncKind.Sync =>
                 // a bound sync argument: `{ val a = arg; tail }`, without a monadic step (the val keeps its type: a singleton
-                // type of a stable path, on which the types of the next parameters can depend). The origin is the whole call,
-                // as for a bound qualifier: `origin` of a first argument list of a curried call has a method type.
-                QualifierBinding.withBinding(argss.last.origin, owner, prefixVal, tail)
+                // type of a stable path, on which the types of the next parameters can depend), or a null check `{ check; tail }`.
+                // The origin is the whole call, as for a bound qualifier: `origin` of a first argument list of a curried call has a
+                // method type.
+                QualifierBinding.withBinding(argss.last.origin, owner, prefixVal.getOrElse(prefixCpsTree.unpure.get), tail)
               case _ =>
                 // TODO: optimise.
                 //  (mb - introduce flaMap as operations, which automatically do optimizations)
@@ -986,7 +992,7 @@ object ApplyTransform {
                   owner,
                   prefixCpsTree,
                   FlatMapCpsTreeArgument(
-                    Some(prefixVal),
+                    prefixVal,
                     tail
                   )
                 )

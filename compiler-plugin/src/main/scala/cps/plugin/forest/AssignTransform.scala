@@ -25,6 +25,14 @@ object AssignTransform {
                 val qualValDef = QualifierBinding.valDef(qual, "xQualAssign", qualifier.span, owner)
                 val lhs = ref(qualValDef.symbol).select(term.lhs.symbol).withSpan(term.lhs.span)
                 QualifierBinding.withBinding(term, owner, qualValDef, lhsSyncAssign(term, lhs, cpsRhs, owner))
+              case AsyncKind.Async(_) if QualifierBinding.nullChecks(qual).nonEmpty =>
+                // a pure qualifier stays: the references it selects from are checked before the right part
+                val lhs = if (qual eq qualifier) then term.lhs else qual.select(term.lhs.symbol).withSpan(term.lhs.span)
+                QualifierBinding
+                  .nullChecks(qual)
+                  .foldRight(lhsSyncAssign(term, lhs, cpsRhs, owner))((check, next) =>
+                    QualifierBinding.withBinding(term, owner, check, next)
+                  )
               case _ =>
                 val lhs = if (qual eq qualifier) then term.lhs else qual.select(term.lhs.symbol).withSpan(term.lhs.span)
                 lhsSyncAssign(term, lhs, cpsRhs, owner)

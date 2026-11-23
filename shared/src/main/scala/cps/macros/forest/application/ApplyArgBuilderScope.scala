@@ -156,7 +156,10 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
       if (paramsDescriptor.isByName(acc.paramIndex)) acc.advance(ApplyArgByNameRecord(t, acc.posIndex, termCpsTree, None, None))
       else if (syncPurity.contains(QualifierPurity.PurePath)) then
         if (!termCpsTree.isChanged) then
-          acc.advance(ApplyArgNoPrecalcTermRecord(t, acc.posIndex, false, paramsDescriptor.isCpsDirect(acc.paramIndex), true))
+          val nullChecks = QualifierPurity.nullChecks(using qctx)(t)
+          acc.advance(
+            ApplyArgNoPrecalcTermRecord(t, acc.posIndex, false, paramsDescriptor.isCpsDirect(acc.paramIndex), true, nullChecks)
+          )
         else
           val changed = termCpsTree.syncOrigin.get
           acc.advance(

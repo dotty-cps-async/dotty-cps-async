@@ -11,9 +11,9 @@ private[forest] enum QualifierPurity:
   // `this`, `super`, a literal, a selection of a non-lazy val or of an object without initialization code from such a path: evaluated
   // after the async part, also more than once, it gives the same value without other effects. Also a package, the statics of a Java
   // class and a Scala.js global scope object, which are not values, and the `StringContext` of a string interpolation with such
-  // parts. As in dotty, a selection from a val is a pure path also when the val can be null: its NullPointerException can be thrown
-  // after the async part. (Binding it would bind selections from inline `this` proxies, `X_this.am`, whose singleton types go stale
-  // when the inlined code is copied.)
+  // parts. As in dotty, a selection from a val is a pure path also when the val can be null: the path stays, the reference is
+  // checked in its place (see `nullChecks`). (Binding it would bind selections from inline `this` proxies, `X_this.am`, whose
+  // singleton types go stale when the inlined code is copied: https://github.com/dotty-cps-async/dotty-cps-async/issues/184.)
   case PurePath
   // a stable path through a lazy val or an object with initialization code: its evaluation can run an initializer (as dotty's
   // `refPurity`, used by the plugin).
@@ -115,6 +115,29 @@ private[forest] object QualifierPurity:
             case _                                       => stablePathType(declaredType(tr).widenByName)
       case _ => None
     stablePathType(term.tpe).getOrElse(widened)
+
+  /** `if (q == null) throw new NullPointerException()` for each reference `q`, from which a pure path `term` (which stays after a
+    * later async part) selects and which can be null, in the evaluation order: `t` of `t.x`, `a` and `a.b` of `a.b.c`. The
+    * selection throws, as in Scala, before the async part. `this`, `super`, an object, a package and a value of a value class are
+    * never null.
+    */
+  def nullChecks(using Quotes)(term: quotes.reflect.Term): List[quotes.reflect.Term] =
+    import quotes.reflect._
+    def isNonNull(qual: Term): Boolean = qual match
+      case This(_) | Super(_, _) | Literal(_) => true
+      case Typed(expr, _)                     => isNonNull(expr)
+      case _ =>
+        qual.symbol.flags.is(Flags.Module) || qual.symbol.flags.is(Flags.Package) || qual.tpe.widen <:< TypeRepr.of[AnyVal]
+    def selection(qual: Term): List[Term] =
+      references(qual) ++ (if (isNonNull(qual)) then Nil else List(qual))
+    def references(t: Term): List[Term] = t match
+      case Typed(Repeated(elems, _), _) => elems.flatMap(references)
+      case Typed(expr, _)               => references(expr)
+      case Apply(fun, args)             => references(fun) ++ args.flatMap(references)
+      case Select(qual, _)              => selection(qual)
+      case Ident(_)                     => importedQualifier(t).map(selection).getOrElse(Nil)
+      case _                            => Nil
+    references(term).map(qual => '{ if (${ qual.asExpr } == null) throw new NullPointerException() }.asTerm)
 
   /** The term path of a member imported from it (`import O.*; n = ...` or `import O.*; m(...)`), which is the qualifier of the
     * reference.
