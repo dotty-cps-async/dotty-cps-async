@@ -116,6 +116,9 @@ object CpsTransformHelper {
           val nParams = adoptResultTypeParam(params, fType)
           AppliedType(funCn, nParams)
         else decorateTypeApplications(fType).appliedTo(t.widen)
+      case RefinedType(_, StdNames.nme.apply, mt: MethodType) if defn.isFunctionNType(t) =>
+        // a dependent function type `(x: A) => x.R` is transformed to `(x: A) => F[x.R]` (#174)
+        mt.derivedLambdaType(mt.paramNames, mt.paramInfos, cpsTransformedType(mt.resType, fType, debug)).toFunctionType()
       case mt: MethodType =>
         if (mt.isContextualMethod)
           mt.derivedLambdaType(mt.paramNames, mt.paramInfos, cpsTransformedType(mt.resType, fType, debug))

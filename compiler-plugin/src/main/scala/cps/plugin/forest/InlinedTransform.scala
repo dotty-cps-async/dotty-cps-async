@@ -99,45 +99,64 @@ object InlinedTransform {
               println(s"tail = ${tail.show}")
             throw CpsTransformException(s"Error in tail.asyncKind", tail.origin.srcPos)
         }
-      val retval = adoptedRhs.asyncKind match
+      adoptedRhs.asyncKind match
         case AsyncLambda(bodyKind) =>
-          adoptedValDefChange.asyncLambdaValDef match
-            case Some(lambdaValDef) =>
-              tail match
-                case SeqCpsTree(tailOrigin, tailOwner, prevs, last) =>
-                  SeqCpsTree(origin.rhs, owner, prevs = prevs :+ MemberDefCpsTree(origin, owner, lambdaValDef), last = last)
-                case _ =>
-                  SeqCpsTree(origin.rhs, owner, prevs = IndexedSeq(MemberDefCpsTree(origin, owner, lambdaValDef)), last = tail)
-            case None =>
-              throw CpsTransformException(s"Internal error: no lambdaValDef in AsyncChangedBindingRecord", origin.srcPos)
+          if (asyncLambdaValDef.isEmpty) then
+            throw CpsTransformException(s"Internal error: no lambdaValDef in AsyncChangedBindingRecord", origin.srcPos)
+          // the async lambda is defined in the bindings of the new inlined term (`newBinding`): a second definition
+          // of the same symbol before the inlined term breaks the owners, when the trees are moved to a new owner (#174)
+          None
         case _ =>
-          tail.asyncKind match
+          val retval = tail.asyncKind match
             case AsyncKind.Sync =>
               MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(Some(origin), tail))
             case AsyncKind.Async(v) =>
               FlatMapCpsTree(origin.rhs, owner, adoptedRhs, FlatMapCpsTreeArgument(Some(origin), tail))
             case AsyncKind.AsyncLambda(bodyKind) =>
               MapCpsTree(origin.rhs, owner, adoptedRhs, MapCpsTreeArgument(Some(origin), tail))
-      Some(retval)
+          Some(retval)
     }
 
     override def substitute(tree: Tree, treeMap: BinginsTreeMap, ctx: Context)(using CpsTopLevelContext): Option[Tree] = {
       given Context = ctx
+      // the inliner puts references to proxies into `Inlined(EmptyTree, Nil, proxy)`
+      def isOriginRef(t: Tree): Boolean = t match
+        case Inlined(EmptyTree, Nil, expansion) => isOriginRef(expansion)
+        case id: Ident                          => id.symbol == origin.symbol
+        case _                                  => false
       asyncLambdaValDef match {
         case Some(nValDef) =>
           tree match {
-            case Apply(TypeApply(sel @ Select(obj @ Ident(name), applyName), targs), args)
-                if (obj.symbol == origin.symbol && applyName == "apply".toTermName) =>
+            case Apply(TypeApply(sel @ Select(obj, applyName), targs), args)
+                if (isOriginRef(obj) && applyName == "apply".toTermName) =>
               val nArgs = args.map(treeMap.transform(_))
               val nSelect = Select(ref(nValDef.symbol), "apply".toTermName)
               val nTree = Apply(TypeApply(nSelect, targs), nArgs)
               Some(insertAwait(nTree, tree.tpe.widen))
-            case Apply(Select(obj @ Ident(name), applyName), args)
-                if (obj.symbol == origin.symbol && applyName == "apply".toTermName) =>
+            case Apply(Select(obj, applyName), args) if (isOriginRef(obj) && applyName == "apply".toTermName) =>
               val nArgs = args.map(treeMap.transform(_))
               val nSelect = Select(ref(nValDef.symbol), "apply".toTermName)
               val nTree = Apply(nSelect, nArgs)
               Some(insertAwait(nTree, tree.tpe.widen))
+            case id: Ident if (id.symbol == origin.symbol) =>
+              // the proxy as a function value: `(x1, ... xN) => await(proxy$async.apply(x1, ... xN))`
+              origin.tpt.tpe.widen.member(StdNames.nme.apply).info match
+                case mt: MethodType =>
+                  val meth = Symbols.newAnonFun(ctx.owner, mt)
+                  val closure = Closure(
+                    meth,
+                    tss => {
+                      val args = tss.head
+                      val nTree = Apply(Select(ref(nValDef.symbol), StdNames.nme.apply), args)
+                      insertAwait(nTree, mt.instantiate(args.map(_.tpe)).widen)
+                    }
+                  )
+                  Some(closure.withSpan(tree.span))
+                case other =>
+                  throw CpsTransformException(
+                    s"function type expected for ${origin.symbol.show}, we have ${other.show}",
+                    tree.srcPos
+                  )
             case _ =>
               None
           }
@@ -383,7 +402,8 @@ object InlinedTransform {
     }
 
     val bindingsTreeMap = new BinginsTreeMap(records)
-    val changedExpansion = bindingsTreeMap.transform(inlinedTerm.expansion)
+    // the owner of closures, which are created for references to proxies
+    val changedExpansion = bindingsTreeMap.transform(inlinedTerm.expansion)(using summon[Context].withOwner(owner))
 
     val newBindings = records.flatMap(_.newBinding).map { b =>
       b.changeOwner(b.symbol.owner, owner)

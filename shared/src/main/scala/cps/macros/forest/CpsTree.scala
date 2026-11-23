@@ -751,25 +751,23 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
         otpe.asInstanceOf[otherCake.qctx.reflect.TypeRepr]
       )
 
+    /** `R` of the result type `F[R]` of [[rLambda]], with references to the parameters of the original lambda. */
+    private def shiftedResultType: TypeRepr = body.otpe.widen
+
+    /** `R` of the result type `F[R]` of an application of [[rLambda]] to `args`. */
+    def shiftedResultTypeFor(args: List[Term]): TypeRepr =
+      shiftedResultType.substituteTypes(params.map(_.symbol), args.map(_.tpe))
+
+    private def shiftedType: MethodType =
+      TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, TypeRepr.of[F].appliedTo(shiftedResultType))
+
+    /** The type of [[rLambda]], as the compiler types a closure of [[shiftedType]]: `(x1: X1, ... xN: XN) => F[R]` is a dependent
+      * function type when `R` refers to the parameters (as `(n: Node) => F[n.Child]`, #174).
+      */
     override def rtpe =
-      val resType = TypeRepr.of[F].appliedTo(List(otpe.widen))
-      val paramTypes = params.map(_.tpt.tpe)
-      if (params.length == 0)
-        val f0 = TypeIdent(Symbol.classSymbol("scala.Function0")).tpe
-        f0.appliedTo(List(resType.widen))
-      else if (params.length == 1)
-        val f1 = TypeIdent(Symbol.classSymbol("scala.Function1")).tpe
-        f1.appliedTo(paramTypes :+ resType)
-      else if (params.length == 2)
-        val f2 = TypeIdent(Symbol.classSymbol("scala.Function2")).tpe
-        f2.appliedTo(paramTypes :+ resType)
-      else if (params.length == 3)
-        val f3 = TypeIdent(Symbol.classSymbol("scala.Function3")).tpe
-        f3.appliedTo(paramTypes :+ resType)
-      else throw MacroError("Sorry, functions with more than 3 parameters are not supported yet", posExprs(originLambda))
+      Closure(Ref(Symbol.newMethod(owner, "$anonfun", shiftedType)), None).tpe
 
     def rLambda: Term =
-      val shiftedType = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, TypeRepr.of[F].appliedTo(body.otpe.widen))
       // TODO: think, maybe exists case, where we need substitute Ident(param) for x[i] (?)
       //       because otherwise it's quite strange why we have such interface in compiler
 
