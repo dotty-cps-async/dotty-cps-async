@@ -149,8 +149,7 @@ class TestApplyArgEvaluationOrder {
     FutureCompleter(c)
   }
 
-  // vals, a literal, `this`, a spliced val and a case class without initialization code (they stay in the call): only the results
-  // are checked
+  // vals, a literal, `this`, a spliced val (they stay in the call) and a case class instance: only the results are checked
   @Test def testPurePathArgs() = {
     val c = async[Future] {
       val h = new Holder
@@ -226,6 +225,59 @@ class TestApplyArgEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // the value of an argument is a stable path, the types of the next parameters depend on it: the result of a parameterless
+  // method, of a method call and of a parameterless method imported from an object
+  @Test def testSingletonResultDependentParamArgs() = {
+    val log = ArrayBuffer[String]()
+    val dep: Dep = DepObject
+    def theDep: dep.type = { log += "first"; dep }
+    def theDepCall(): dep.type = { log += "first"; dep }
+    val c = async[Future] {
+      val r1 = depPair(theDep)(dep.mk(1), await({ log += "second"; Future.successful(2) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r1 == (1, 2), s"r1=$r1")
+      log.clear()
+      val r2 = depPair(theDepCall())(dep.mk(3), await({ log += "second"; Future.successful(4) }))
+      assert(log.toList == List("first", "second"), s"log=$log")
+      assert(r2 == (3, 4), s"r2=$r2")
+      val r3 = depPair(sharedDepDef)(sharedDep.mk(5), await(Future.successful(6)))
+      assert(r3 == (5, 6), s"r3=$r3")
+    }
+    FutureCompleter(c)
+  }
+
+  // a case class with an argument imported from an object with initialization code: the object is initialized before the async
+  // argument
+  @Test def testImportedValInCaseClassArg() = {
+    import ImportedInitFields.n
+    val c = async[Future] {
+      val r = point(Point(n, 2), await({ importedFieldsLog += "second"; Future.successful(3) }))
+      assert(importedFieldsLog.toList == List("init", "second"), s"log=$importedFieldsLog")
+      assert(r == (1, 2, 3), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // an ascribed val imported from an object with initialization code: the object is initialized before the async argument
+  @Test def testImportedValInTypedArg() = {
+    import ImportedTypedInitFields.n
+    val c = async[Future] {
+      val r = pair(n: Int, await({ importedTypedFieldsLog += "second"; Future.successful(2) }))
+      assert(importedTypedFieldsLog.toList == List("init", "second"), s"log=$importedTypedFieldsLog")
+      assert(r == (1, 2), s"r=$r")
+    }
+    FutureCompleter(c)
+  }
+
+  // new instances before an async argument in a monad, which runs the rest of the computation for each element (`List`): each
+  // instance is created once, as in Scala
+  @Test def testNewInstanceArgInListMonad() = {
+    val cells = reify[List] { first(MultiShotCell(0), reflect(List(1, 2))) }
+    assert(cells.length == 2 && (cells(0) eq cells(1)), s"cells=$cells")
+    val holders = reify[List] { first(new Holder, reflect(List(1, 2))) }
+    assert(holders.length == 2 && (holders(0) eq holders(1)), s"holders=$holders")
+  }
+
   // the call with a sync argument and a shifted lambda (no async argument): the argument is evaluated once, after the qualifier
   @Test def testMethodCallArgWithShiftedLambda() = {
     val log = ArrayBuffer[String]()
@@ -295,6 +347,28 @@ object TestApplyArgEvaluationOrder {
 
   def depPair(x: Dep)(y: x.T, z: Int): (Int, Int) = (x.get(y), z)
 
+  val sharedDep: Dep = DepObject
+
+  def sharedDepDef: sharedDep.type = sharedDep
+
+  def first[A](a: A, b: Int): A = a
+
+  // only `testImportedValInCaseClassArg` touches ImportedInitFields
+  val importedFieldsLog = ArrayBuffer[String]()
+
+  object ImportedInitFields {
+    importedFieldsLog += "init"
+    val n: Int = 1
+  }
+
+  // only `testImportedValInTypedArg` touches ImportedTypedInitFields
+  val importedTypedFieldsLog = ArrayBuffer[String]()
+
+  object ImportedTypedInitFields {
+    importedTypedFieldsLog += "init"
+    val n: Int = 1
+  }
+
   // only `testCaseClassCompanionWithInitArg` touches InitCompanion
   val companionLog = ArrayBuffer[String]()
 
@@ -324,3 +398,6 @@ object TestApplyArgEvaluationOrder {
   }
 
 }
+
+// at the top level: its path is pure (a case class in an object with initialization code is bound with the object)
+case class MultiShotCell(var v: Int)

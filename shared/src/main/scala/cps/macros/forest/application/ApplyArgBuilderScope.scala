@@ -181,11 +181,16 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
       else
         val argName: String = "a" + acc.posIndex // TODO: get name from params
         val widened = TransformUtil.veryWiden(t.tpe, expectedType)
-        // an argument, which is a stable path (a lazy val, an object), keeps its singleton type: the types of the next parameters
-        // can depend on it (`def g(x: A)(y: x.T)`), as for a bound qualifier. (Not other trees with a singleton type, e.g. a
-        // block `{ ...; x }`: the transformed tree can have the widened type.)
+        // a sync reference or call whose value is a stable path (a lazy val, an object, `get` where `def get: b.type`) keeps its
+        // singleton type: the types of the next parameters can depend on it (`def g(x: A)(y: x.T)`), as for a bound qualifier.
+        // (Not an async or a changed argument, or other trees with a singleton type, e.g. a block `{ ...; x }`: the transformed
+        // tree can have the widened type.)
+        val isRefOrCall = t match
+          case Ident(_) | Select(_, _) | Apply(_, _) | TypeApply(_, _) => true
+          case _                                                         => false
         val widenType =
-          if (syncPurity.contains(QualifierPurity.IdempotentPath)) then QualifierPurity.bindingType(using qctx)(t, widened)
+          if (syncPurity.isDefined && !termCpsTree.isChanged && isRefOrCall) then
+            QualifierPurity.bindingType(using qctx)(t, widened)
           else widened
         val symbol = Symbol.newVal(Symbol.spliceOwner, argName, widenType, Flags.EmptyFlags, Symbol.noSymbol)
         val valDef = symbol.tree match

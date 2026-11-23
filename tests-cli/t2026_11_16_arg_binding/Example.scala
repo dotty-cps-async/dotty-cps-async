@@ -3,8 +3,9 @@
 //> using options -Xcheck-macros
 // see: https://github.com/dotty-cps-async/dotty-cps-async/issues/170
 // Sync arguments which are not pure paths are bound to vals before an async argument. The trees are checked with -Ycheck:all
-// (added by cc.TestsCli): the val of a lazy val or an object argument keeps its singleton type, on which the types of the next
-// parameters depend; the plugin binds a sync argument with a block, not with `flatMap(pure(...))`. The `StringContext` of `f` is
+// (added by cc.TestsCli): the val of a lazy val or an object argument, or of a method with a singleton result type keeps its
+// singleton type, on which the types of the next parameters depend; the plugin binds a sync argument with a block, not with
+// `flatMap(pure(...))`. The `StringContext` of `f` is
 // not bound, and the val of an async argument has its type (not the parameter type `Any`).
 
 import cps.*
@@ -37,6 +38,8 @@ def tagged(t: Tagged, b: Int): Int = t.n * 10 + b
 
 @main def test(): Unit =
   lazy val la: Dep = DepInitObject
+  val dep: Dep = DepInitObject
+  def theDep: dep.type = dep
   def first(): Int = 1
   val f = async[Future] {
     var x = 1
@@ -48,6 +51,7 @@ def tagged(t: Tagged, b: Int): Int = t.n * 10 + b
     val r6 = List(2, 3).foldLeft(first())((s, e) => s + await(Future.successful(e)))
     // the `StringContext` stays a literal, the argument keeps its type
     val r7 = f"x${await(Future.successful(2))}%03d"
-    List(r1, r2, r3, r4, r5, r6, r7)
+    val r8 = depPair(theDep)(dep.mk(2), await(Future.successful(3)))
+    List(r1, r2, r3, r4, r5, r6, r7, r8)
   }
   println(Await.result(f, 10.seconds))

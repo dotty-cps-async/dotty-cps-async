@@ -12,9 +12,7 @@ import cps.plugin.*
 import cps.plugin.forest.application.*
 
 /** A sync qualifier of an assignment `q.f = ...` or a method call `q.m(...)` with an async right part or argument is bound to a val
-  * before the async part, to keep the Scala evaluation order, unless it is a pure expression or not a value. A pure expression
-  * (dotty's `isPureExpr`) has no effects and depends only on stable paths: a pure path, or a case class apply without
-  * initialization code with pure arguments (`StringContext("a", "b")` of an interpolator, which must stay a literal for `f`). See
+  * before the async part, to keep the Scala evaluation order, unless it is pure (see `isPure`) or not a value. See
   * https://github.com/dotty-cps-async/dotty-cps-async/issues/165 and https://github.com/dotty-cps-async/dotty-cps-async/issues/169
   *
   * The same holds for a sync argument of a call with an async argument (`f(a, await(...))`, see `ApplyArg.withSyncBinding` and
@@ -36,25 +34,27 @@ object QualifierBinding {
     }
 
   def needsBinding(qual: Tree)(using Context): Boolean =
-    !isPure(path(qual)) && !isNoValue(qual)
+    !isPure(qual) && !isNoValue(qual)
 
-  /** A pure expression (dotty's `isPureExpr`): no effects, depends only on stable paths. Two cases differ from dotty's `exprPurity`
-    * (3.9): a package is a pure path (`refPurity` gives an idempotent path for it, so `_root_.scala.StringContext` would be bound),
-    * and a pure apply (a case class without initialization code) can have varargs (`exprPurity` has no case for a `SeqLiteral`):
-    * `_root_.scala.StringContext("a", "b")` of an interpolator is pure.
+  /** Evaluated after the async part, also more than once (a monad can run the rest of the computation more than once, as `List`),
+    * it gives the same value without other effects: a pure path (dotty's `isPurePath`), a function value, or the `StringContext`
+    * of a string interpolation with pure parts, which must stay a literal for `f`. Differences from dotty's `exprPurity` (3.9):
+    *   - a package is a pure path (`refPurity` gives an idempotent path for it, so `_root_.scala.StringContext` would be bound);
+    *   - a member imported from a path (`import O.*; h`) is selected from it: the path is evaluated too;
+    *   - a new instance, also of a case class without initialization code, is not pure: each evaluation gives a new one;
+    *   - `StringContext(...)` can have varargs (`exprPurity` has no case for a `SeqLiteral`).
+    * As in dotty, a selection from a val is pure also when the val can be null (as in the macro, see `QualifierPurity.PurePath`).
     */
   private def isPure(tree: Tree)(using Context): Boolean =
     tree match
       case _: Literal | _: This | _: Super    => true
       case _ if tree.symbol.is(Flags.Package) => true
-      case _: Ident                           => isPureRef(tree)
+      case id: Ident                          => isPureRef(tree) && importedQualifier(id).forall(isPure)
       case Select(qual, _)                    => isPureRef(tree) && isPure(qual)
       case Typed(expr, _)                     => isPure(expr)
-      // a method with type arguments, applied later
-      case TypeApply(fn, _) => tree.tpe.widen.isInstanceOf[Types.MethodOrPoly] && isPure(fn)
-      case Apply(fn, args) =>
-        (isPureApply(tree, fn) || tree.tpe.widen.isInstanceOf[Types.MethodOrPoly]) && isPure(fn) && args.forall(isPureArg)
-      case _ => isPureExpr(tree)
+      case Apply(fn, args)                    => fn.symbol == defn.StringContextModule_apply && isPure(fn) && args.forall(isPureArg)
+      case closureDef(_)                      => true
+      case _                                  => false
 
   private def isPureArg(arg: Tree)(using Context): Boolean =
     arg match
@@ -63,20 +63,18 @@ object QualifierBinding {
       case NamedArg(_, expr)              => isPureArg(expr)
       case _                              => isPure(arg)
 
-  /** The path, which a qualifier denotes: a member imported from a path (`import O.*; h`) is selected from it. */
-  private def path(qual: Tree)(using Context): Tree =
-    qual match
-      case id: Ident => importedQualifier(id).map(_.select(id.symbol)).getOrElse(qual)
-      case _         => qual
-
-  /** `val name = qual`. A singleton type of a stable path (a lazy val or an object, or the result type of `def f(): b.type`) is
-    * kept: member types can depend on it. Otherwise only singleton term references are widened (as `widenTermRefByName` in the
-    * macro): `this.type` stays.
+  /** `val name = qual`. A singleton type of a stable path, which is the value of `qual`, is kept: member types and the types of the
+    * next parameters can depend on it. `qual` is such a path (a lazy val or an object), or has its type (`f()`, where `def f():
+    * b.type`), or refers to a parameterless method, a by-name parameter or a var with such a declared type (`def get: b.type`).
+    * Otherwise only singleton term references are widened (as `widenTermRefByName` in the macro): `this.type` stays.
     */
   def valDef(qual: Tree, name: String, span: Span, owner: Symbol)(using Context): ValDef = {
-    val qualType = qual.tpe match
-      case tr: Types.TermRef if isPathType(tr) && isIdempotentPath(ref(tr)) => tr
-      case _                                                                => qual.tpe.widenTermRefExpr
+    def stablePathType(tpe: Types.Type): Option[Types.Type] =
+      tpe match
+        case tr: Types.TermRef if isPathType(tr) =>
+          if (isIdempotentPath(ref(tr))) then Some(tr) else stablePathType(tr.info.widenExpr)
+        case _ => None
+    val qualType = stablePathType(qual.tpe).getOrElse(qual.tpe.widenTermRefExpr)
     val qualSym = newSymbol(owner, name.toTermName, Flags.EmptyFlags, qualType, NoSymbol)
     ValDef(qualSym.asTerm, qual.changeOwner(owner, qualSym)).withSpan(span)
   }

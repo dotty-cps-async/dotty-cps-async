@@ -356,6 +356,15 @@ class TestApplyQualifierEvaluationOrder {
     FutureCompleter(c)
   }
 
+  // new instances as qualifiers, in a monad, which runs the rest of the computation for each element (`List`): each instance is
+  // created once, as in Scala
+  @Test def testNewInstanceQualifierInListMonad() = {
+    val cells = reify[List] { MultiShotSelfCell(0).self(reflect(List(1, 2))) }
+    assert(cells.length == 2 && (cells(0) eq cells(1)), s"cells=$cells")
+    val holders = reify[List] { new SelfHolder().self(reflect(List(1, 2))) }
+    assert(holders.length == 2 && (holders(0) eq holders(1)), s"holders=$holders")
+  }
+
   // the `StringContext` of an interpolator is not bound: the `f` interpolator needs it as a literal (and the type of the argument)
   @Test def testStringInterpolators() = {
     val c = async[Future] {
@@ -404,6 +413,10 @@ object TestApplyQualifierEvaluationOrder {
   }
 
   class IntCell(val x: Int)
+
+  class SelfHolder {
+    def self(y: Int): SelfHolder = this
+  }
 
   class Cell[A](val x: A)
 
@@ -477,4 +490,9 @@ object TestApplyQualifierEvaluationOrder {
     def mk: Int = x
   }
 
+}
+
+// at the top level: its path is pure (a case class in an object with initialization code is bound with the object)
+case class MultiShotSelfCell(var x: Int) {
+  def self(y: Int): MultiShotSelfCell = this
 }
