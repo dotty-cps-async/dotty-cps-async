@@ -51,7 +51,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                     case _                      => body.tpe.widen
                   if (cpsBinding.isAsync) then
                     val lambdaTree = new AsyncLambdaCpsTree(owner, lambda, params, cpsBinding, resultType)
-                    val newSym = Symbol.newVal(owner, name, lambdaTree.rtpe, vx.symbol.flags, Symbol.noSymbol)
+                    val newSym = Symbol.newVal(owner, name, lambdaTree.rtpe, Flags.EmptyFlags, Symbol.noSymbol)
                     val rLambda = lambdaTree.rLambda.changeOwner(newSym)
                     val newValDef = ValDef(newSym, Some(rLambda))
                     // check:
@@ -61,7 +61,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                       newBindings = newValDef :: s.newBindings
                     )
                   else if (cpsBinding.isChanged) then
-                    val newSym = Symbol.newVal(Symbol.spliceOwner, name, tpt.tpe, vx.symbol.flags, Symbol.noSymbol)
+                    val newSym = Symbol.newVal(owner, name, tpt.tpe, Flags.EmptyFlags, Symbol.noSymbol)
                     val mt = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, resultType)
                     val newValDef = ValDef(
                       newSym,
@@ -162,58 +162,65 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
                 if (cpsCtx.flags.debugLevel > 0) then report.warning(s"failed term: ${term}")
                 throw ex
 
+          /** A reference to the proxy of a changed function: the inliner puts references to proxies into
+            * `Inlined(None, Nil, proxy)`.
+            */
+          object FunProxyRef:
+            def unapply(term: Term): Option[InlinedFunBindingRecord] =
+              term match
+                case Inlined(None, Nil, expr) => unapply(expr)
+                case Ident(_) =>
+                  funValDefs.changes.get(term.symbol) match
+                    case Some(binding: InlinedFunBindingRecord) => Some(binding)
+                    case _                                      => None
+                case _ => None
+
+          def asyncNonLambdaProxyError(binding: InlinedFunBindingRecord): MacroError =
+            MacroError(
+              "async function, which is not a lambda, in an inline proxy is not supported",
+              posExprs(binding.oldValDef.rhs.get)
+            )
+
+          /** `proxy.apply(args)` with the transformed proxy: `await(proxy.apply(args))` for an async lambda. */
+          def applyFunProxy(binding: InlinedFunBindingRecord, newFun: Term, args: List[Term])(owner: Symbol): Term =
+            val newArgs = args.map(a => this.transformTerm(a)(owner))
+            val changed = Apply(newFun, newArgs)
+            binding.cpsTree match
+              case lambdaTree: AsyncLambdaCpsTree => generateAwaitFor(changed, lambdaTree.shiftedResultTypeFor(newArgs))
+              case other =>
+                if other.isAsync then throw asyncNonLambdaProxyError(binding)
+                else changed
+
           def transformTermInternal(term: Term)(owner: Symbol): Term =
             // TODO: implements other methods then apply, i.e. anThen, compose, etc
             term match
-              case Apply(TypeApply(Select(obj @ Ident(name), "apply"), targs), args) =>
-                funValDefs.changes.get(obj.symbol) match
-                  case Some(binding) =>
-                    binding match
-                      case funBinding: InlinedFunBindingRecord =>
-                        val newArgs = args.map(a => this.transformTerm(a)(owner))
-                        val newApply = Select.unique(Ref(funBinding.newSym), "apply")
-                        val changed = Apply(TypeApply(newApply, targs), newArgs)
-                        if (funBinding.cpsTree.isAsync) then generateAwaitFor(changed, changed.tpe)
-                        else changed
-                      case _ =>
-                        super.transformTerm(term)(owner)
-                  case None =>
-                    super.transformTerm(term)(owner)
-              case Apply(Select(obj @ Ident(name), "apply"), args) =>
-                funValDefs.changes.get(obj.symbol) match
-                  case Some(binding: InlinedFunBindingRecord) =>
-                    val newArgs = args.map(a => this.transformTerm(a)(owner))
-                    val newApply = Select.unique(Ref(binding.newSym), "apply")
-                    val changed = Apply(newApply, newArgs)
-                    if (binding.cpsTree.isAsync) then generateAwaitFor(changed, changed.tpe)
-                    else changed
-                  case _ =>
-                    super.transformTerm(term)(owner)
+              case Apply(TypeApply(Select(FunProxyRef(binding), "apply"), targs), args) =>
+                applyFunProxy(binding, TypeApply(Select.unique(Ref(binding.newSym), "apply"), targs), args)(owner)
+              case Apply(Select(FunProxyRef(binding), "apply"), args) =>
+                applyFunProxy(binding, Select.unique(Ref(binding.newSym), "apply"), args)(owner)
               case obj @ Ident(name) =>
                 funValDefs.changes.get(obj.symbol) match
                   case Some(vbinding) =>
                     vbinding match
                       case binding: InlinedFunBindingRecord =>
-                        if (binding.cpsTree.isAsync) then
-                          // inline themself
-                          //   low priority todo: think about escaping of work duplication if inlining.
-                          // TODO: currently inline flag is not set in proxy.
-                          val inlineProxies = binding.oldValDef.symbol.flags.is(Flags.Inline)
-                          val rhs = binding.oldValDef.rhs.get
-                          checkLambdaDef(rhs) match
-                            case Some(Lambda(params, body)) =>
-                              val mt = TransformUtil.lambdaMethodType(MethodTypeKind.Plain, params, binding.newResultType)
-                              Lambda(
-                                Symbol.spliceOwner,
-                                mt,
-                                (owner, args) =>
-                                  // the substitution gives the definitions to `owner`, the application has no definitions
-                                  if inlineProxies then TransformUtil.substituteLambdaParams(params, args, body, owner)
-                                  else Apply(Select.unique(Ref(binding.newSym), "apply"), args.map(_.asInstanceOf[Term]))
-                              )
-                            case _ =>
-                              throw MacroError("Lambda in rhs expected", posExprs(rhs))
-                        else Ref(binding.newSym)
+                        binding.cpsTree match
+                          case lambdaTree: AsyncLambdaCpsTree =>
+                            // the proxy as a function value: `(x1, ... xN) => await(proxy.apply(x1, ... xN))`
+                            val mt =
+                              TransformUtil.lambdaMethodType(MethodTypeKind.Plain, lambdaTree.params, binding.newResultType)
+                            Lambda(
+                              owner,
+                              mt,
+                              (_, args) =>
+                                val argTerms = args.map(_.asInstanceOf[Term])
+                                generateAwaitFor(
+                                  Apply(Select.unique(Ref(binding.newSym), "apply"), argTerms),
+                                  lambdaTree.shiftedResultTypeFor(argTerms)
+                                )
+                            )
+                          case other =>
+                            if other.isAsync then throw asyncNonLambdaProxyError(binding)
+                            else Ref(binding.newSym)
                       case binding: InlinedValBindingRecord =>
                         usedAwaitVals = usedAwaitVals + binding.newSym
                         Ref(binding.newSym)
@@ -224,7 +231,7 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
               case _ =>
                 super.transformTerm(term)(owner)
         }
-        transformer.transformTerm(origin.body)(Symbol.spliceOwner)
+        transformer.transformTerm(origin.body)(owner)
       } else {
         origin.body
       }

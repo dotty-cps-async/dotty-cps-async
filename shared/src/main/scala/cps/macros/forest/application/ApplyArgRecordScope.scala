@@ -423,6 +423,10 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
           }
         case at @ AnnotatedType(underlying, anon) =>
           shiftedArgExpr(existsAsync, shiftType, underlying, params, body)
+        case Refinement(parent, "apply", _: MethodType) if parent.isFunctionType =>
+          // a dependent function type `(x: A) => x.R` (of an inline proxy used as a function value, #174):
+          // the shifted lambda has the function type, which it refines, as `A => F[A#R]`
+          shiftedArgExpr(existsAsync, shiftType, parent, params, body)
         case other =>
           report.error(
             s"""
