@@ -542,10 +542,12 @@ trait ApplyArgRecordScope[F[_], CT, CC <: CpsMonadContext[F]]:
       optShiftType match
         case None => term
         case Some(shiftType) =>
+          // the type, with which the argument was transformed (it keeps a literal type, required by the parameter, #177)
+          val argType = TransformUtil.veryWiden(cpsTree.otpe, widenLiterals = false)
           val rType = shiftType match
-            case ApplicationShiftType.CPS_ONLY             => TypeRepr.of[F].appliedTo(List(term.tpe.widen))
-            case ApplicationShiftType.CPS_RUNTIME_AWAIT    => term.tpe.widen
-            case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN => term.tpe.widen
+            case ApplicationShiftType.CPS_ONLY             => TypeRepr.of[F].appliedTo(List(argType))
+            case ApplicationShiftType.CPS_RUNTIME_AWAIT    => argType
+            case ApplicationShiftType.CPS_DEFERR_TO_PLUGIN => argType
           val mt = MethodType(List())(_ => List(), _ => rType)
           Lambda(
             Symbol.spliceOwner,

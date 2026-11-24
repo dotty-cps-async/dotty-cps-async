@@ -24,7 +24,8 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     if (bodyOwner == Symbol.noSymbol) {
       throw MacroError("Can't determinate body owner", lambdaTerm.asExpr)
     }
-    val cpsBody = runRoot(body)(bodyOwner)
+    // the declared result type of the lambda is expected (#177)
+    val cpsBody = runRoot(body, expectedType = TransformUtil.lambdaResultType(lambdaTerm))(bodyOwner)
     val retval = if (cpsBody.isAsync) {
       // in general, shifted lambda
       if (cpsCtx.flags.allowShiftedLambda) then AsyncLambdaCpsTree(owner, lambdaTerm, params, cpsBody, lambdaTerm.tpe)
@@ -51,10 +52,10 @@ trait LambdaTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
     }
     retval
 
-  /** method type for (p1 ... pn) => F[otpe]
+  /** method type for (p1 ... pn) => F[otpe]: literal types and `this.type` of `otpe` are kept (`map["a"]`, #177)
     */
   def cpsShiftedMethodType(paramNames: List[String], paramTypes: List[TypeRepr], otpe: TypeRepr): MethodType =
-    MethodType(paramNames)(_ => paramTypes, _ => TypeRepr.of[F].appliedTo(otpe.widen))
+    MethodType(paramNames)(_ => paramTypes, _ => TypeRepr.of[F].appliedTo(TransformUtil.veryWiden(otpe, widenLiterals = false)))
 
 object LambdaTreeTransform:
 

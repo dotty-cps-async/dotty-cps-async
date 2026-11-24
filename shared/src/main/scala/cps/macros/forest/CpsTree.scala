@@ -68,7 +68,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
     /** type which we see outside. i.e. F[T] for near all 'normal' trees or X=>F[T] for async lambda.
       */
     def rtpe: TypeRepr =
-      TypeRepr.of[F].appliedTo(List(otpe.widen))
+      TypeRepr.of[F].appliedTo(List(TransformUtil.veryWiden(otpe, widenLiterals = false)))
 
     /** cast CpsTree to keep newOtpe.type inside monad.
       */
@@ -752,7 +752,7 @@ trait CpsTreeScope[F[_], CT, CC <: CpsMonadContext[F]] {
       )
 
     /** `R` of the result type `F[R]` of [[rLambda]], with references to the parameters of the original lambda. */
-    private def shiftedResultType: TypeRepr = body.otpe.widen
+    private def shiftedResultType: TypeRepr = TransformUtil.veryWiden(body.otpe, widenLiterals = false)
 
     /** `R` of the result type `F[R]` of an application of [[rLambda]] to `args`. */
     def shiftedResultTypeFor(args: List[Term]): TypeRepr =

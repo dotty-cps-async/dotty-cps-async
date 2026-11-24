@@ -16,11 +16,14 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
       posIndex: Int = 0,
       paramIndex: Int = 0,
       wasNamed: Boolean = false,
-      inRepeat: Boolean = false,
+      repeatedElemType: Option[TypeRepr] = None,
       inNamed: Boolean = false,
       records: Seq[ApplyArgRecord] = IndexedSeq.empty,
       filledNamed: Set[Int] = Set.empty
   ) {
+
+    /** the elements of varargs are built (of type `repeatedElemType`) */
+    def inRepeat: Boolean = repeatedElemType.isDefined
 
     def advance(record: ApplyArgRecord): BuildApplyArgsAcc =
       if (inRepeat)
@@ -65,15 +68,24 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
       import scala.quoted.Expr
 
       if cpsCtx.flags.debugLevel >= 15 then cpsCtx.log(s"buildApplyArgRecord: pos=${acc.posIndex}, t=${safeShow(t)} ")
-      // the type of the parameter is expected: the widened type of the argument can not conform to it (#166)
+      // the type of the parameter is expected (its underlying type for a by-name parameter, the element type for varargs): the
+      // widened type of the argument can not conform to it (#166, #177)
       val expectedType =
-        if (acc.inRepeat || paramsDescriptor.isByName(acc.paramIndex)) None
-        else paramsDescriptor.paramType(acc.paramIndex)
+        acc.repeatedElemType.orElse(
+          paramsDescriptor.paramType(acc.paramIndex).map {
+            case ByNameType(underlying) => underlying
+            case other                  => other
+          }
+        )
       t match {
         case tr @ Typed(r @ Repeated(rargs, tpt), tpt1) =>
           // TODO: in nested context
-          val accRepeated =
-            O.buildApplyArgsRecordsAcc(paramsDescriptor, rargs, owner, acc.copy(inRepeat = true, records = IndexedSeq.empty))
+          val accRepeated = O.buildApplyArgsRecordsAcc(
+            paramsDescriptor,
+            rargs,
+            owner,
+            acc.copy(repeatedElemType = Some(tpt.tpe), records = IndexedSeq.empty)
+          )
           val nextRecord = ApplyArgRepeatRecord(tr, r, acc.posIndex, accRepeated.records.toList, tpt1)
           acc.advance(nextRecord).copy(posIndex = accRepeated.posIndex)
         case r @ Repeated(rargs, tpt) =>
@@ -81,14 +93,19 @@ trait ApplyArgBuilderScope[F[_], CT, CC <: CpsMonadContext[F]] {
           // repeated without typed. Impossible?..  let's put warning and process.
           // val tr = Typed.copy(r)(r,Inferred(r.tpe.widen))
           // report.warning(s"repeated without type, t=${t.show}", posExpr(t))
-          val accRepeated =
-            O.buildApplyArgsRecordsAcc(paramsDescriptor, rargs, owner, acc.copy(inRepeat = true, records = IndexedSeq.empty))
+          val accRepeated = O.buildApplyArgsRecordsAcc(
+            paramsDescriptor,
+            rargs,
+            owner,
+            acc.copy(repeatedElemType = Some(tpt.tpe), records = IndexedSeq.empty)
+          )
           val nextRecord = ApplyArgRepeatRecord(r, r, acc.posIndex, accRepeated.records.toList, tpt)
           acc.advance(nextRecord).copy(posIndex = accRepeated.posIndex)
         case lambda @ Lambda(params, body) =>
           // mb, this will not work, for expressions, which return block.
           //  look's like somewhere in future, better add 'shifted' case to CpsExpr
-          val cpsBody = runRoot(body)(owner)
+          // the declared result type of the lambda is expected (#177)
+          val cpsBody = runRoot(body, expectedType = TransformUtil.lambdaResultType(lambda))(owner)
           val nextRecord = if (paramsDescriptor.isByName(acc.paramIndex)) {
             throw MacroError("passing lamda as byName params is not supported yet", posExpr(t))
           } else {
