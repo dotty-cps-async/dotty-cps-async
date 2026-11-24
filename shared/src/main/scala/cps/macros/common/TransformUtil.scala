@@ -210,6 +210,14 @@ object TransformUtil:
       case Inlined(_, Nil, inner) => lambdaClosureType(inner)
       case _                      => None
 
+  /** The declared result type of a lambda (the return type of its method): the expected type of its body. */
+  def lambdaResultType(using Quotes)(lambda: quotes.reflect.Term): Option[quotes.reflect.TypeRepr] =
+    import quotes.reflect._
+    lambda match
+      case Block(List(ddef: DefDef), Closure(_, _)) => Some(ddef.returnTpt.tpe)
+      case Inlined(_, Nil, inner)                   => lambdaResultType(inner)
+      case _                                        => None
+
   /** Set the closure type of a lambda, built by `Lambda(...)` as `Block(List(DefDef), Closure)`. */
   def withClosureType(using Quotes)(lambda: quotes.reflect.Term, tpe: quotes.reflect.TypeRepr): quotes.reflect.Term =
     import quotes.reflect._
@@ -229,9 +237,11 @@ object TransformUtil:
     *   the expected type of the term, used with `widenLiterals`
     * @param widenLiterals
     *   - true: the type, with which a term is transformed. A literal type or `this.type` is widened (`true | false` with expected
-    *     `Boolean` is `Boolean`), unless `expected` requires it: it conforms to `expected`, its widening does not. (A union of literal
-    *     types can be written by the user: `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is
-    *     soft; `this.type` can be the result type, #166.)
+    *     `Boolean` is `Boolean`), unless `expected` requires it: it conforms to `expected`, its widening does not. Then the term is
+    *     transformed with `expected` itself (`"b"` with expected `"a" | "b"`): with an invariant `F`, `F["b"]` does not conform to
+    *     `F["a" | "b"]`, and a cast would be an additional `map` (#177). (A union of literal types can be written by the user:
+    *     `val t: "a" | "b" = { await(f); "b" }`, and Quotes does not show, whether a union is soft; `this.type` can be the result
+    *     type, #166.)
     *   - false: the type of a tree, which was built with type `tp` (as the type arguments of `map` / `flatMap`): literal types and
     *     `this.type` in it were kept, when the tree was built, and they are kept.
     */
@@ -241,18 +251,21 @@ object TransformUtil:
       widenLiterals: Boolean = true
   ): qctx.reflect.TypeRepr =
     import quotes.reflect._
-    def keep(t: TypeRepr): Boolean = !widenLiterals || expected.exists(e => t <:< e && !(tp.widen <:< e))
+    // the type of a kept literal or `this.type` `t`
+    def kept(t: TypeRepr): Option[TypeRepr] =
+      if (!widenLiterals) then Some(t)
+      else expected.filter(e => t <:< e && !(tp.widen <:< e))
     tp match
       case OrType(lhs, rhs) =>
         val nLhs = veryWiden(lhs, expected, widenLiterals)
         val nRhs = veryWiden(rhs, expected, widenLiterals)
         if (nLhs =:= nRhs) then nLhs
         else OrType(nLhs, nRhs)
-      case ConstantType(_) | ThisType(_) if keep(tp) => tp
+      case ConstantType(_) | ThisType(_) if kept(tp).isDefined => kept(tp).get
       case other =>
         tp.widenTermRefByName match
-          case declared @ (ConstantType(_) | ThisType(_)) if keep(declared) => declared
-          case _                                                            => tp.widen
+          case declared @ (ConstantType(_) | ThisType(_)) if kept(declared).isDefined => kept(declared).get
+          case _                                                                      => tp.widen
 
   /** The error for a term, which is expected to have singleton types of terms (`x.type | y.type`): the transformed term does not keep
     * them (https://github.com/dotty-cps-async/dotty-cps-async/issues/179).

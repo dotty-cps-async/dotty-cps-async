@@ -18,7 +18,13 @@ object ValDefTransform:
     val rhs = valDef.rhs.getOrElse(
       throw MacroError(s"val $valDef without right part in block ", cpsCtx.patternCode)
     )
-    val rhsType = TransformUtil.veryWiden(rhs.tpe, Some(valDef.tpt.tpe)).asType
+    // the declared type is expected. When it has singleton types of terms (`val z: y.type`), the exact type of the right part
+    // is used, as for an assignment: transformed terms do not keep them otherwise (#179, #177)
+    val declaredType = valDef.tpt.tpe
+    val rhsType =
+      (if (TransformUtil.veryWiden(declaredType, widenLiterals = false) <:< declaredType) then
+         TransformUtil.veryWiden(rhs.tpe, Some(declaredType))
+       else rhs.tpe).asType
     rhsType match
       case '[et] =>
         if cpsCtx.flags.debugLevel > 15 then cpsCtx.log(s"ValDef::rightPart is ${TransformUtil.safeShow(rhs)}")

@@ -45,7 +45,9 @@ trait InlinedTreeTransform[F[_], CT, CC <: CpsMonadContext[F]]:
             case Some(lambda) =>
               lambda match
                 case Lambda(params, body) =>
-                  val cpsBinding = runRoot(body)(TransformUtil.lambdaBodyOwner(lambda))
+                  // the declared result type of the lambda is expected (#177)
+                  val cpsBinding =
+                    runRoot(body, expectedType = TransformUtil.lambdaResultType(lambda))(TransformUtil.lambdaBodyOwner(lambda))
                   val resultType = vx.tpt.tpe match
                     case AppliedType(fun, args) => args.last
                     case _                      => body.tpe.widen

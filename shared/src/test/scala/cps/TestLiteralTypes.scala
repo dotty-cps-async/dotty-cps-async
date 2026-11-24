@@ -365,4 +365,148 @@ class TestLiteralTypes {
     FutureCompleter(typed.unsafeRunFuture().map(r => assert(r == "b", s"r=$r")))
   }
 
+  // #177: literal types in lambda bodies, by-name and varargs arguments, vals of singleton types of terms
+
+  def lambdaLiteralResults[F[_]: CpsMonad](r: () => F[Int]): F[(List["a" | "b"], List["a" | "b"], List["a"])] = async[F] {
+    val a = List(1, 2).map[("a" | "b")](x => if (await(r()) > x) "a" else "b")
+    val b = List(1, 2).map { (x: Int) =>
+      val v: "a" | "b" = { await(r()); "a" }
+      v
+    }
+    val c = List(1, 2).map["a"](x => { await(r()); "a" })
+    (a, b, c)
+  }
+
+  def partialFunctionLiteralResult[F[_]: CpsMonad](r: () => F[Int]): F[List["a" | "b"]] = async[F] {
+    List(1, 2).collect[("a" | "b")] { case x if x > 0 => if (await(r()) > x) "a" else "b" }
+  }
+
+  def optionMapLiteralResult[F[_]: CpsMonad](r: () => F[Int], o: Option[Int]): F[Option["a" | "b"]] = async[F] {
+    o.map[("a" | "b")](x => if (await(r()) > x) "a" else "b")
+  }
+
+  transparent inline def passOnA(g: Int => "a"): List["a"] = List(1, 2).map(g)
+
+  def inlineProxyLambdaLiteralResult[F[_]: CpsMonad](r: () => F[Int]): F[List["a"]] = async[F] {
+    passOnA(x => { await(r()); "a" })
+  }
+
+  @Test def testLambdaLiteralResultsInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val c = for {
+      a <- lambdaLiteralResults[Future](r)
+      b <- partialFunctionLiteralResult[Future](r)
+      d <- optionMapLiteralResult[Future](r, Some(0))
+      e <- inlineProxyLambdaLiteralResult[Future](r)
+    } yield (a, b, d, e)
+    FutureCompleter(
+      c.map(v =>
+        assert(
+          v == ((List("b", "b"), List("a", "a"), List("a", "a")), List("b", "b"), Some("a"), List("a", "a")),
+          s"v=$v"
+        )
+      )
+    )
+  }
+
+  class SelfInLambda {
+    def selves[F[_]: CpsMonad](r: () => F[Int]): F[List[this.type]] = async[F] {
+      List(1, 2).map[this.type](x => { await(r()); this })
+    }
+  }
+
+  @Test def testThisTypeLambdaResultInGenericMonad() = {
+    val s = SelfInLambda()
+    val c = s.selves[Future](() => Future.successful(1))
+    FutureCompleter(c.map(v => assert(v.size == 2 && v.forall(_ eq s), s"v=$v")))
+  }
+
+  def byNameLiteralArgs[F[_]: CpsMonad](r: () => F[Int], o: Option["a" | "b"]): F[("a" | "b", "a" | "b")] = async[F] {
+    val a: "a" | "b" = o.getOrElse(if (await(r()) > 0) "a" else "b")
+    val b: "a" | "b" = o.getOrElse({ await(r()); "b" })
+    (a, b)
+  }
+
+  class SelfByName {
+    def selfOrElse[F[_]: CpsMonad](r: () => F[Int], o: Option[this.type]): F[this.type] = async[F] {
+      o.getOrElse({ await(r()); this })
+    }
+  }
+
+  @Test def testByNameLiteralArgsInGenericMonad() = {
+    val r = () => Future.successful(1)
+    val s = SelfByName()
+    val c = for {
+      a <- byNameLiteralArgs[Future](r, None)
+      b <- s.selfOrElse[Future](r, None)
+    } yield (a, b eq s)
+    FutureCompleter(c.map(v => assert(v == (("a", "b"), true), s"v=$v")))
+  }
+
+  def hv(xs: ("a" | "b")*): String = xs.mkString
+
+  def hkv(k: Int, xs: ("a" | "b")*): String = k.toString + xs.mkString
+
+  def varargsLiteralArgs[F[_]: CpsMonad](r: () => F[Int]): F[(String, String, List["a" | "b"])] = async[F] {
+    val a = hv(if (await(r()) > 0) "a" else "b", "b")
+    val b = hkv(await(r()), "a", if (await(r()) > 0) "b" else "a")
+    val c = List[("a" | "b")](if (await(r()) > 0) "a" else "b", "b")
+    (a, b, c)
+  }
+
+  @Test def testVarargsLiteralArgsInGenericMonad() = {
+    val c = varargsLiteralArgs[Future](() => Future.successful(1))
+    FutureCompleter(c.map(v => assert(v == ("ab", "1ab", List("a", "b")), s"v=$v")))
+  }
+
+  object Holder {
+    lazy val q = 7
+  }
+
+  def valsOfTermSingletonTypes[F[_]: CpsMonad](r: () => F[Int]): F[(Int, Int, Int)] =
+    val x = 1
+    val y = 5
+    async[F] {
+      val z: y.type = { await(r()); y }
+      val v: x.type | y.type = if (await(r()) > 0) x else y
+      val q: Holder.q.type = { await(r()); Holder.q }
+      (z + 1, v + 0, q + 1)
+    }
+
+  @Test def testValsOfTermSingletonTypesInGenericMonad() = {
+    val c = valsOfTermSingletonTypes[Future](() => Future.successful(1))
+    FutureCompleter(c.map(v => assert(v == (6, 1, 8), s"v=$v")))
+  }
+
+  @Test def testValOfTermSingletonTypesWithAsyncCasesIsReported() = {
+    val errors = scala.compiletime.testing.typeCheckErrors("""
+      {
+        val x = 1
+        val y = 2
+        async[Future] {
+          val v: x.type | y.type = await(g(1)) match
+            case 10 => { await(g(2)); y }
+            case _  => x
+          v
+        }
+      }
+    """)
+    // with the compiler plugin, async is transformed after the typer: there are no errors here
+    if (usesCompilerPlugin) then assert(errors.isEmpty, errors.map(_.message).mkString("\n"))
+    else
+      assert(
+        errors.exists(_.message.contains("singleton types of terms are not supported")),
+        errors.map(_.message).mkString("\n")
+      )
+  }
+
+  @Test def testLambdaAndByNameLiteralResultsInInvariantMonad() = {
+    val c: PureEffect[(List["a" | "b"], "a" | "b")] = async[PureEffect] {
+      val a = List(1, 2).map[("a" | "b")](x => if (await(PureEffect.pure(x)) > 1) "a" else "b")
+      val b: "a" | "b" = Option.empty["a" | "b"].getOrElse({ await(PureEffect.pure(1)); "b" })
+      (a, b)
+    }
+    FutureCompleter(c.unsafeRunFuture().map(v => assert(v == (List("b", "a"), "b"), s"v=$v")))
+  }
+
 }
